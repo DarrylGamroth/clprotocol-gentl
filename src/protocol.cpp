@@ -9,7 +9,6 @@
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
-#include <functional>
 #include <thread>
 
 namespace clprotocol {
@@ -49,36 +48,20 @@ std::string checked_string(const char *data, std::size_t size)
     if (!length || length == size) throw std::runtime_error("invalid CLProtocol string");
     return {data, length};
 }
-// On 32-bit x86, CLAllSerial uses stdcall and a serial driver uses cdecl.
-template<class R, class... Args>
-std::function<R(Args...)> serial_symbol(const Library &library, bool aggregate,
-                                       R (CLALLSERIALCC *)(Args...), const char *name)
-{
-    if (aggregate) return library.symbol<R (CLALLSERIALCC *)(Args...)>(name);
-    return library.symbol<R (*)(Args...)>(name);
-}
 } // namespace
 
 class SerialLibrary {
 public:
-    explicit SerialLibrary(const char *path) : library_(path) {}
-
-private:
-    Library library_;
-    const decltype(&::clGetNumPorts) aggregate_count_ =
-        library_.symbol<decltype(&::clGetNumPorts)>("clGetNumPorts", false);
-public:
-    CLINT32 count_ports(CLUINT32 *count) const {
-        if (aggregate_count_) return aggregate_count_(count);
-        return driver_count_(count);
+    explicit SerialLibrary(const char *path) : library_(path) {
+        if (!count_ports) count_ports = library_.symbol<CountPorts>("clGetNumSerialPorts");
     }
 
 private:
-    CLINT32 (*driver_count_)(CLUINT32 *) = aggregate_count_ ? nullptr :
-        library_.symbol<CLINT32 (*)(CLUINT32 *)>("clGetNumSerialPorts");
+    Library library_;
 public:
-#define SERIAL_SYMBOL(name) serial_symbol(library_, aggregate_count_ != nullptr, decltype(&::name){}, #name)
-#define LOAD(name) decltype(SERIAL_SYMBOL(name)) name = SERIAL_SYMBOL(name)
+#define LOAD(name) decltype(&::name) name = library_.symbol<decltype(&::name)>(#name)
+    using CountPorts = decltype(&::clGetNumPorts);
+    CountPorts count_ports = library_.symbol<CountPorts>("clGetNumPorts", false);
     LOAD(clSerialInit);
     LOAD(clSerialClose);
     LOAD(clSerialRead);
@@ -88,7 +71,6 @@ public:
     LOAD(clGetSupportedBaudRates);
     LOAD(clSetBaudRate);
 #undef LOAD
-#undef SERIAL_SYMBOL
 };
 
 class CameraConnection::SerialPort final : public ISerial {
