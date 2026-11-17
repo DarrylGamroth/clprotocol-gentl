@@ -38,8 +38,9 @@ jobs:
           cmake -S . -B "$build" -G Ninja -DBUILD_TESTING=ON -DCLPROTOCOL_GENTL_COVERAGE=ON
           cmake --build "$build" --parallel
           ctest --test-dir "$build" --output-on-failure --no-tests=error
-          gcovr --root "$GITHUB_WORKSPACE" --filter '^src/' \
-            --cobertura "$RUNNER_TEMP/coverage.xml" --print-summary "$build"
+          cd "$build"
+          gcovr --root "$GITHUB_WORKSPACE" --filter "$GITHUB_WORKSPACE/src/" \
+            --fail-under-line 90.01 --cobertura "$RUNNER_TEMP/coverage.xml" --print-summary "$build/CMakeFiles"
       - name: Upload coverage to Codecov
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

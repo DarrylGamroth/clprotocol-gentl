@@ -77,8 +77,20 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
     assert len(found) == 1 and found[0]["device"] == "CLSerial-1", found
     verify_camera(explicit, 1, "ALT-TEST-001", "CameraPort")
 
+    saved_config = registered.read_text()
+    for invalid_config in ("# no assignments\n",
+                           saved_config.replace(driver.name, "libunknown.so"),
+                           saved_config.replace(driver.name, " relative/" + driver.name),
+                           saved_config.replace("\tbig\n", "\tinvalid\n")):
+        registered.write_text(invalid_config)
+        run(explicit, "info", "--json", expect=1)
+    registered.unlink()
+    run(explicit, "info", "--json", expect=1)
+
     automatic = env | {"GENICAM_CLPROTOCOL": str(registration)}
     run(automatic, "info", "--json", expect=1)  # Two advertised templates.
+    automatic["CLPROTOCOL_GENTL_DEVICE_TEMPLATE"] = "FixtureVendor#Family#Unknown"
+    run(automatic, "info", "--json", expect=1)
     automatic["CLPROTOCOL_GENTL_DEVICE_TEMPLATE"] = "FixtureVendor#Family#NoSerial"
     assert json_lines(run(automatic, "info", "--json")) == found
     automatic.pop("CLPROTOCOL_GENTL_DEVICE_TEMPLATE")
@@ -87,4 +99,20 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
         xml_file.write_text(xml_file.read_text().replace("CameraPort", "Device"))
     assert json_lines(run(automatic, "info", "--json")) == found
     verify_camera(automatic, 1, "ALT-TEST-001", "Device")
+
+    # A reachable camera without XML can be discovered, but opening fails and
+    # the producer removes the private directory it reserved for the XML.
+    no_xml = Path(tmp) / "no-xml"
+    no_xml_platform = no_xml / "Linux64_x64"
+    no_xml_platform.mkdir(parents=True)
+    shutil.copyfile(driver, no_xml_platform / driver.name)
+    isolated = automatic | {"GENICAM_CLPROTOCOL": str(no_xml),
+                            "CLPROTOCOL_GENTL_SERIAL": mock_serial, "CLP_MOCK_XML_FILE_ONLY": "1"}
+    assert json_lines(run(isolated, "info", "--json")) == found
+    run(isolated, "xml", "--interface", "CameraLinkSerial", "--device", "CLSerial-1", expect=1)
+    assert not any(entry.name.startswith("clprotocol-gentl-") for entry in Path(tmp).iterdir())
+
+    (platform / "libCLAllSerial_gcc8_v3_5.so").unlink()
+    automatic["CLPROTOCOL_GENTL_SERIAL"] = str(platform / "missing-serial.so")
+    run(automatic, "info", "--json", expect=1)
     print("Discovered through GENICAM_CLPROTOCOL and CLAllSerial without a TSV or serial override")
