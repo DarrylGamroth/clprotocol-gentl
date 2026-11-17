@@ -1,0 +1,4 @@
+# Match the CI line coverage gate. GCC branch coverage is reported separately.
+parsers:
+  cobertura:
+    partials_as_hits: true
