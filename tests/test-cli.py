@@ -43,22 +43,20 @@ def verify_camera(env, channel, serial, port):
 
 iris, cti, mock_serial, mock_all_serial, mock_protocol, config, platform_directory = sys.argv[1:]
 env = os.environ.copy()
-for name in ("CLP_XML_PATH", "primary_fixture_SIM_HARDWARE_ID", "primary_fixture_SIM_NO_CAMERA",
-             "CLP_MOCK_XML_FILE_ONLY", "CLP_MOCK_SINGLE_TEMPLATE", "CLP_MOCK_SINGLE_PORT",
+for name in ("CLP_MOCK_XML_FILE_ONLY", "CLP_MOCK_SINGLE_TEMPLATE", "CLP_MOCK_SINGLE_PORT",
              "CLPROTOCOL_GENTL_CONFIG", "CLPROTOCOL_GENTL_SERIAL", "CLPROTOCOL_GENTL_DEVICE_TEMPLATE",
              "GENICAM_CLPROTOCOL"):
     env.pop(name, None)
 with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
     env["TMPDIR"] = tmp
-    if config:
-        paired = env | {"CLPROTOCOL_GENTL_CONFIG": config, "CLPROTOCOL_GENTL_SERIAL": mock_serial}
-        found = json_lines(run(paired, "info", "--json"))
-        assert len(found) == 2 and {e["cti"] for e in found} == {cti}, found
-        assert found[0]["model"] == "primary_fixture" and found[0]["serial"] == "primary_fixture-TEST-001", found
-        assert found[1]["model"] == "NoSerial" and not found[1].get("serial"), found
-        verify_camera(paired, 0, "primary_fixture-TEST-001", "Device")
-        verify_camera(paired, 1, "ALT-TEST-001", "CameraPort")
-        assert not list(Path(tmp).iterdir()), "XML files leaked after device close"
+    paired = env | {"CLPROTOCOL_GENTL_CONFIG": config, "CLPROTOCOL_GENTL_SERIAL": mock_serial}
+    found = json_lines(run(paired, "info", "--json"))
+    assert len(found) == 2 and {e["cti"] for e in found} == {cti}, found
+    assert found[0]["model"] == "WithSerial" and found[0]["serial"] == "PRIMARY-TEST-001", found
+    assert found[1]["model"] == "NoSerial" and not found[1].get("serial"), found
+    verify_camera(paired, 0, "PRIMARY-TEST-001", "CameraPort")
+    verify_camera(paired, 1, "ALT-TEST-001", "CameraPort")
+    assert not list(Path(tmp).iterdir()), "XML files leaked after device close"
 
     driver = Path(mock_protocol)
     registration = Path(tmp) / "CLProtocol"

@@ -12,10 +12,21 @@
 #include <string_view>
 
 namespace {
-constexpr char device_template[] = "FixtureVendor#Family#NoSerial";
-constexpr char full_id[] = "/fixture/" CLPROTOCOL_PLATFORM "#libmock-clprotocol.so#FixtureVendor#Family#NoSerial";
-constexpr char first_xml[] = "SchemaVersion.1.1@FixtureVendor#Family#NoSerial@XMLVersion.2.0.0";
-constexpr char installed_xml[] = "SchemaVersion.1.1@FixtureVendor#Family#NoSerial@XMLVersion.1.0.0";
+#ifdef CLP_MOCK_WITH_SERIAL
+#define FIXTURE_MODEL "WithSerial"
+#define FIXTURE_LIBRARY "libmock-clprotocol-with-serial.so"
+#define FIXTURE_ID_SUFFIX "#1.0#PRIMARY-TEST-001"
+#else
+#define FIXTURE_MODEL "NoSerial"
+#define FIXTURE_LIBRARY "libmock-clprotocol.so"
+#define FIXTURE_ID_SUFFIX ""
+#endif
+#define FIXTURE_TEMPLATE "FixtureVendor#Family#" FIXTURE_MODEL
+constexpr char device_template[] = FIXTURE_TEMPLATE;
+constexpr char full_id[] =
+    "/fixture/" CLPROTOCOL_PLATFORM "#" FIXTURE_LIBRARY "#" FIXTURE_TEMPLATE FIXTURE_ID_SUFFIX;
+constexpr char first_xml[] = "SchemaVersion.1.1@" FIXTURE_TEMPLATE "@XMLVersion.2.0.0";
+constexpr char installed_xml[] = "SchemaVersion.1.1@" FIXTURE_TEMPLATE "@XMLVersion.1.0.0";
 constexpr CLINT64 base = 0x20000000100;
 constexpr CLUINT32 device_cookie = 7;
 bool initialized;
@@ -88,7 +99,7 @@ CLINT32 CLPROTOCOL clpGetCLProtocolVersion(CLUINT32 *major, CLUINT32 *minor)
 CLINT32 CLPROTOCOL clpGetShortDeviceIDTemplates(CLINT8 *out, CLUINT32 *size)
 {
     if (std::getenv("CLP_MOCK_SINGLE_TEMPLATE")) return copy(device_template, out, size);
-    return copy("FixtureVendor#Family#DifferentModel\tFixtureVendor#Family#NoSerial", out, size);
+    return copy("FixtureVendor#Family#DifferentModel\t" FIXTURE_TEMPLATE, out, size);
 }
 
 CLINT32 CLPROTOCOL clpProbeDevice(ISerial *port, const CLINT8 *selection, CLINT8 *out,
@@ -97,12 +108,16 @@ CLINT32 CLPROTOCOL clpProbeDevice(ISerial *port, const CLINT8 *selection, CLINT8
     if (!port || !selection || !cookie || !size) return CL_ERR_INVALID_PTR;
     const std::string_view requested(selection);
     if (requested != device_template && requested != full_id) return CL_ERR_INVALID_DEVICEID;
+    #ifdef CLP_MOCK_WITH_SERIAL
+    auto status = port->clSetBaudRate(CL_BAUDRATE_115200);
+#else
     auto status = port->clSetBaudRate(CL_BAUDRATE_57600);
+#endif
     if (status != CL_ERR_NO_ERR) return status;
     char reply[64];
     status = exchange(port, "HELLO?", reply, timeout);
     if (status != CL_ERR_NO_ERR) return status;
-    if (std::string_view(reply) != "NoSerial") return CL_ERR_NO_DEVICE_FOUND;
+    if (std::string_view(reply) != FIXTURE_MODEL) return CL_ERR_NO_DEVICE_FOUND;
     status = copy(full_id, out, size);
     if (status == CL_ERR_NO_ERR) {
         connected = true;

@@ -46,7 +46,7 @@ jobs:
             "${toolchain[@]}" \
             -DBUILD_TESTING=ON -DCLPROTOCOL_GENTL_TEST_IRIS=OFF
           cmake --build "$build" --parallel --target \
-            clprotocol-gentl mock-clserial mock-clallserial mock-clprotocol test-control-only
+            clprotocol-gentl mock-clserial mock-clallserial mock-clprotocol mock-clprotocol-with-serial test-control-only
           ctest --test-dir "$build" --output-on-failure --no-tests=error
 
   coverage:
@@ -130,20 +130,11 @@ jobs:
           path: dependencies/iris
           persist-credentials: false
 
-      - name: Check out primary_fixture library
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          repository: DarrylGamroth/CLProtocol_primary_fixture
-          ref: 69722b4ec9bcb73754b36dff4427d43a168790c1
-          path: dependencies/primary_fixture
-          ssh-key: ${{ secrets.CLPROTOCOL_primary_fixture_READ_KEY }}
-          persist-credentials: false
-
       - name: Check out Iris SPA
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: DarrylGamroth/pipewireao-spa-plugin-iris
-          ref: 3512ac080774588b488ab68875fec0c9ad962eae
+          ref: b333ba1a29e39be801d12f4e9f34cd022d841562
           path: dependencies/iris-spa
           ssh-key: ${{ secrets.IRIS_SPA_READ_KEY }}
           persist-credentials: false
@@ -165,15 +156,11 @@ jobs:
           mkdir "$RUNNER_TEMP/pipewireao"
           tar -xzf "$PIPEWIREAO_TARBALL" -C "$RUNNER_TEMP/pipewireao"
 
-      - name: Build the capture fixture and primary_fixture CLProtocol library
+      - name: Build the capture fixture
         run: |
           cmake -S dependencies/iris -B "$RUNNER_TEMP/iris-mock" -G Ninja \
             -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build "$RUNNER_TEMP/iris-mock" --target iris-test-cti --parallel
-          cmake -S dependencies/primary_fixture -B "$RUNNER_TEMP/primary_fixture" -G Ninja \
-            -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build "$RUNNER_TEMP/primary_fixture" --parallel
-
       - name: Test the control producer with both libraries
         run: |
           cmake -S . -B "$RUNNER_TEMP/control" -G Ninja \
@@ -181,7 +168,6 @@ jobs:
             -DGENTL_PRODUCER_CORE_SOURCE_DIR="$GITHUB_WORKSPACE/dependencies/gentl-producer-core" \
             -DGenTLHeaders_ROOT="$RUNNER_TEMP/iris-mock/_deps/emva/gentl-1.6" \
             -DGenTLProducerCore_FETCH_GENTL_HEADERS=OFF \
-            -Dprimary_fixture_PROVIDER="$RUNNER_TEMP/primary_fixture/libCLProtocol_primary_fixture.so" \
             -DIRIS_GENTL=/usr/bin/iris-gentl
           cmake --build "$RUNNER_TEMP/control" --parallel
           ctest --test-dir "$RUNNER_TEMP/control" --output-on-failure --verbose

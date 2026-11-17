@@ -40,21 +40,21 @@ Camera *camera_for(hSerRef ref)
 }
 }
 
-extern "C" void primary_fixture_sim_hold_command(const char *command)
+extern "C" void clprotocol_mock_hold_command(const char *command)
 {
     const std::lock_guard lock(command_mutex);
     held_command = command;
     command_arrived = false;
 }
 
-extern "C" int primary_fixture_sim_wait_for_command(unsigned timeout_ms)
+extern "C" int clprotocol_mock_wait_for_command(unsigned timeout_ms)
 {
     std::unique_lock lock(command_mutex);
     return command_changed.wait_for(lock, std::chrono::milliseconds(timeout_ms),
                                     [] { return command_arrived; });
 }
 
-extern "C" void primary_fixture_sim_release_command()
+extern "C" void clprotocol_mock_release_command()
 {
     const std::lock_guard lock(command_mutex);
     held_command.clear();
@@ -150,47 +150,18 @@ try {
         }
     }
     std::string reply;
-    if (other) {
-        if (command == "HELLO?") reply = "NoSerial";
-        else if (command == "ID?") reply = "ALT-TEST-001";
-        else if (command == "RATE?") reply = std::to_string(camera->frame_rate);
-        else if (command.starts_with("RATE=")) {
-            camera->frame_rate = std::stod(command.substr(5));
-            reply = "OK";
-        } else if (command == "MODE?") reply = camera->external_sync ? "1" : "0";
-        else if (command == "MODE=0" || command == "MODE=1") {
-            camera->external_sync = command == "MODE=1";
-            reply = "OK";
-        } else return CL_ERR_INVALID_REFERENCE;
-        camera->pending = reply + "\n";
-        return CL_ERR_NO_ERR;
-    }
-    if (command == "cameratype raw")
-        reply = std::getenv("primary_fixture_SIM_NO_CAMERA") ? "different model" : "primary_fixture";
-    else if (command == "hwuid raw") {
-        const char *serial = std::getenv("primary_fixture_SIM_HARDWARE_ID");
-        reply = serial ? serial : "primary_fixture-TEST-001";
-    }
-    else if (command == "fps raw") reply = std::to_string(camera->frame_rate);
-    else if (command == "minfps raw") reply = "0.001";
-    else if (command == "maxfps raw") reply = "600";
-    else if (command.starts_with("set fps ")) {
-        camera->frame_rate = std::stod(command.substr(8));
-        reply = "Result: OK";
-    } else if (command == "cropping raw") {
-        reply = std::getenv("primary_fixture_SIM_CROP_COLUMNS") ? "on" : "off";
-    } else if (command == "cropping columns raw") {
-        const char *columns = std::getenv("primary_fixture_SIM_CROP_COLUMNS");
-        reply = columns ? columns : "0 639";
-    } else if (command == "cropping rows raw") {
-        reply = "0 3";
-    } else if (command == "extsynchro raw") {
-        reply = camera->external_sync ? "on" : "off";
-    } else if (command == "set extsynchro on" || command == "set extsynchro off") {
-        camera->external_sync = command == "set extsynchro on";
-        reply = "Result: OK";
-    } else reply = "Error: unknown command";
-    camera->pending = reply + "\r\nfli-cli>";
+    if (command == "HELLO?") reply = other ? "NoSerial" : "WithSerial";
+    else if (command == "ID?") reply = other ? "ALT-TEST-001" : "PRIMARY-TEST-001";
+    else if (command == "RATE?") reply = std::to_string(camera->frame_rate);
+    else if (command.starts_with("RATE=")) {
+        camera->frame_rate = std::stod(command.substr(5));
+        reply = "OK";
+    } else if (command == "MODE?") reply = camera->external_sync ? "1" : "0";
+    else if (command == "MODE=0" || command == "MODE=1") {
+        camera->external_sync = command == "MODE=1";
+        reply = "OK";
+    } else return CL_ERR_INVALID_REFERENCE;
+    camera->pending = reply + "\n";
     return CL_ERR_NO_ERR;
 } catch (const std::exception &) {
     return CL_ERR_INVALID_REFERENCE;
