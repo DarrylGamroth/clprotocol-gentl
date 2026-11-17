@@ -41,7 +41,7 @@ def verify_camera(env, channel, serial, port):
     print(f"{serial}: loaded XML via {port}, verified writes and readback, zero streams")
 
 
-iris, cti, mock_serial, mock_protocol, config, platform_directory = sys.argv[1:]
+iris, cti, mock_serial, mock_all_serial, mock_protocol, config, platform_directory = sys.argv[1:]
 env = os.environ.copy()
 for name in ("CLP_XML_PATH", "primary_fixture_SIM_HARDWARE_ID", "primary_fixture_SIM_NO_CAMERA",
              "CLP_MOCK_XML_FILE_ONLY", "CLP_MOCK_SINGLE_TEMPLATE", "CLP_MOCK_SINGLE_PORT",
@@ -66,7 +66,7 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
     platform.mkdir(parents=True)
     # Keep the driver target separate from its registration root and XML.
     (platform / driver.name).symlink_to(driver)
-    (platform / "libCLAllSerial_gcc8_v3_5.so").symlink_to(Path(mock_serial).resolve())
+    (platform / "libCLAllSerial_gcc8_v3_5.so").symlink_to(Path(mock_all_serial).resolve())
     for xml_file in driver.parent.parent.glob("*.xml"):
         shutil.copyfile(xml_file, registration / xml_file.name)
     registered = Path(tmp) / "registered.tsv"

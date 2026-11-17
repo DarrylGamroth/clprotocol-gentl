@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MIT
+#ifdef MOCK_CLALLSERIAL
+#include <CLProtocol/ClAllSerial.h>
+#define MOCK_SERIAL_CC CLALLSERIALCC
+#else
 #include <CLProtocol/ClSerial.h>
+#define MOCK_SERIAL_CC CLSERIALCC
+#endif
 
 #include <algorithm>
 #include <array>
@@ -55,23 +61,17 @@ extern "C" void primary_fixture_sim_release_command()
     command_changed.notify_all();
 }
 
-CLINT32 CLSERIALCC clGetNumSerialPorts(CLUINT32 *count)
+#ifdef MOCK_CLALLSERIAL
+CLINT32 MOCK_SERIAL_CC clGetNumPorts(CLUINT32 *count)
+#else
+CLINT32 MOCK_SERIAL_CC clGetNumSerialPorts(CLUINT32 *count)
+#endif
 {
-    *count = cameras.size();
+    *count = std::getenv("CLP_MOCK_SINGLE_PORT") ? 1 : cameras.size();
     return CL_ERR_NO_ERR;
 }
 
-// CLAllSerial uses clGetNumPorts for the aggregated port list.
-extern "C" CLINT32 CLSERIALCC clGetNumPorts(CLUINT32 *count)
-{
-    if (std::getenv("CLP_MOCK_SINGLE_PORT")) {
-        *count = 1;
-        return CL_ERR_NO_ERR;
-    }
-    return clGetNumSerialPorts(count);
-}
-
-CLINT32 CLSERIALCC clSerialInit(CLUINT32 index, hSerRef *ref)
+CLINT32 MOCK_SERIAL_CC clSerialInit(CLUINT32 index, hSerRef *ref)
 {
     if (index >= cameras.size()) return CL_ERR_INVALID_INDEX;
     auto &camera = cameras[index];
@@ -81,12 +81,12 @@ CLINT32 CLSERIALCC clSerialInit(CLUINT32 index, hSerRef *ref)
     return CL_ERR_NO_ERR;
 }
 
-void CLSERIALCC clSerialClose(hSerRef ref)
+void MOCK_SERIAL_CC clSerialClose(hSerRef ref)
 {
     if (auto *camera = camera_for(ref)) camera->open = false;
 }
 
-CLINT32 CLSERIALCC clGetNumBytesAvail(hSerRef ref, CLUINT32 *count)
+CLINT32 MOCK_SERIAL_CC clGetNumBytesAvail(hSerRef ref, CLUINT32 *count)
 {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;
@@ -95,7 +95,7 @@ CLINT32 CLSERIALCC clGetNumBytesAvail(hSerRef ref, CLUINT32 *count)
     return CL_ERR_NO_ERR;
 }
 
-CLINT32 CLSERIALCC clFlushPort(hSerRef ref)
+CLINT32 MOCK_SERIAL_CC clFlushPort(hSerRef ref)
 {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;
@@ -103,7 +103,7 @@ CLINT32 CLSERIALCC clFlushPort(hSerRef ref)
     return CL_ERR_NO_ERR;
 }
 
-CLINT32 CLSERIALCC clGetSupportedBaudRates(hSerRef ref, CLUINT32 *rates)
+CLINT32 MOCK_SERIAL_CC clGetSupportedBaudRates(hSerRef ref, CLUINT32 *rates)
 {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;
@@ -111,7 +111,7 @@ CLINT32 CLSERIALCC clGetSupportedBaudRates(hSerRef ref, CLUINT32 *rates)
     return CL_ERR_NO_ERR;
 }
 
-CLINT32 CLSERIALCC clSetBaudRate(hSerRef ref, CLUINT32 baud)
+CLINT32 MOCK_SERIAL_CC clSetBaudRate(hSerRef ref, CLUINT32 baud)
 {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;
@@ -120,7 +120,7 @@ CLINT32 CLSERIALCC clSetBaudRate(hSerRef ref, CLUINT32 baud)
     return CL_ERR_NO_ERR;
 }
 
-CLINT32 CLSERIALCC clSerialRead(hSerRef ref, CLINT8 *buffer, CLUINT32 *size, CLUINT32)
+CLINT32 MOCK_SERIAL_CC clSerialRead(hSerRef ref, CLINT8 *buffer, CLUINT32 *size, CLUINT32)
 {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;
@@ -130,7 +130,7 @@ CLINT32 CLSERIALCC clSerialRead(hSerRef ref, CLINT8 *buffer, CLUINT32 *size, CLU
     return CL_ERR_NO_ERR;
 }
 
-CLINT32 CLSERIALCC clSerialWrite(hSerRef ref, CLINT8 *buffer, CLUINT32 *size, CLUINT32 timeout_ms)
+CLINT32 MOCK_SERIAL_CC clSerialWrite(hSerRef ref, CLINT8 *buffer, CLUINT32 *size, CLUINT32 timeout_ms)
 try {
     auto *camera = camera_for(ref);
     if (!camera) return CL_ERR_INVALID_REFERENCE;

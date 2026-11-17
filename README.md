@@ -30,9 +30,10 @@ The producer uses the CLProtocol SDK and the matching CLAllSerial runtime and
 camera driver. GenApi runs in the consumer. The producer's Linux loader and
 GenTLProducerCore determine which systems can build and load the CTI.
 
-GitHub CI exercises Linux x86-64, AArch64, and 32-bit x86. CMake also recognizes
-the EMVA layout for 32-bit ARM hard-float. Windows would require porting the CTI
-loader and Core. The EMVA GenApi SDK for macOS supports consumer applications.
+GitHub CI runs the mock suite on Linux x86-64, AArch64, and 32-bit x86, and
+cross-builds and runs it under emulation for 32-bit ARM hard-float. Windows
+requires a port of the CTI loader and Core. EMVA ships GenApi for macOS but
+its CLProtocol package has no macOS runtime.
 
 ## Discover cameras
 

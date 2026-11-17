@@ -4,10 +4,13 @@ if(primary_fixture_PROVIDER AND NOT EXISTS "${primary_fixture_PROVIDER}")
     message(FATAL_ERROR "primary_fixture_PROVIDER does not name a built CLProtocol driver")
 endif()
 
-add_library(mock-clserial MODULE mock-clserial.cpp)
-target_compile_features(mock-clserial PRIVATE cxx_std_20)
-target_link_libraries(mock-clserial PRIVATE Threads::Threads)
-target_include_directories(mock-clserial PRIVATE "${CLPROTOCOL_INCLUDE_DIR}")
+foreach(serial_mock mock-clserial mock-clallserial)
+    add_library(${serial_mock} MODULE mock-clserial.cpp)
+    target_compile_features(${serial_mock} PRIVATE cxx_std_20)
+    target_link_libraries(${serial_mock} PRIVATE Threads::Threads)
+    target_include_directories(${serial_mock} PRIVATE "${CLPROTOCOL_INCLUDE_DIR}")
+endforeach()
+target_compile_definitions(mock-clallserial PRIVATE MOCK_CLALLSERIAL)
 
 add_library(mock-clprotocol MODULE mock-clprotocol.cpp)
 target_compile_features(mock-clprotocol PRIVATE cxx_std_17)
@@ -16,9 +19,9 @@ target_include_directories(mock-clprotocol PRIVATE "${CLPROTOCOL_INCLUDE_DIR}")
 set(registration_root "${CMAKE_CURRENT_BINARY_DIR}/registered")
 set_target_properties(mock-clprotocol PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${registration_root}/${CLPROTOCOL_PLATFORM}")
-add_custom_command(TARGET mock-clserial POST_BUILD
+add_custom_command(TARGET mock-clallserial POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E make_directory "${registration_root}/${CLPROTOCOL_PLATFORM}"
-    COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE:mock-clserial>"
+    COMMAND "${CMAKE_COMMAND}" -E create_symlink "$<TARGET_FILE:mock-clallserial>"
         "${registration_root}/${CLPROTOCOL_PLATFORM}/libCLAllSerial_gcc8_v3_5.so")
 set(mock_xml "SchemaVersion.1.1@FixtureVendor#Family#NoSerial@XMLVersion.1.0.0.xml")
 configure_file("${mock_xml}" "registered/${mock_xml}" COPYONLY)
@@ -33,7 +36,7 @@ if(CLPROTOCOL_GENTL_TEST_IRIS)
     find_program(IRIS_GENTL iris-gentl REQUIRED)
     add_test(NAME iris-cli COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test-cli.py"
         "${IRIS_GENTL}" "$<TARGET_FILE:clprotocol-gentl>" "$<TARGET_FILE:mock-clserial>"
-        "$<TARGET_FILE:mock-clprotocol>" "${port_config}" "${CLPROTOCOL_PLATFORM}")
+        "$<TARGET_FILE:mock-clallserial>" "$<TARGET_FILE:mock-clprotocol>" "${port_config}" "${CLPROTOCOL_PLATFORM}")
     set_tests_properties(iris-cli PROPERTIES TIMEOUT 40)
 endif()
 
@@ -51,12 +54,12 @@ endif()
 add_test(NAME control-only COMMAND "${CMAKE_COMMAND}" -E env
     "CLPROTOCOL_GENTL_CONFIG=${port_config}"
     "CLPROTOCOL_GENTL_SERIAL=$<TARGET_FILE:mock-clserial>"
-    "$<TARGET_FILE:test-control-only>" "$<TARGET_FILE:clprotocol-gentl>" ${control_only_devices})
+    ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:test-control-only>" "$<TARGET_FILE:clprotocol-gentl>" ${control_only_devices})
 set_tests_properties(control-only PROPERTIES TIMEOUT 20)
 add_test(NAME registration COMMAND "${CMAKE_COMMAND}" -E env
     --unset=CLPROTOCOL_GENTL_CONFIG --unset=CLPROTOCOL_GENTL_SERIAL
     --unset=CLPROTOCOL_GENTL_DEVICE_TEMPLATE --unset=CLP_MOCK_SINGLE_PORT
     "CLP_MOCK_SINGLE_TEMPLATE=1" "CLP_MOCK_XML_FILE_ONLY=1"
     "GENICAM_CLPROTOCOL=${registration_root}"
-    "$<TARGET_FILE:test-control-only>" "$<TARGET_FILE:clprotocol-gentl>" CLSerial-1)
+    ${CMAKE_CROSSCOMPILING_EMULATOR} "$<TARGET_FILE:test-control-only>" "$<TARGET_FILE:clprotocol-gentl>" CLSerial-1)
 set_tests_properties(registration PROPERTIES TIMEOUT 20)
