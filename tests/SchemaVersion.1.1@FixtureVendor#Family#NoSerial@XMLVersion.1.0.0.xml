@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RegisterDescription xmlns="http://www.genicam.org/GenApi/Version_1_1"
+    ModelName="NoSerial" VendorName="FixtureVendor" StandardNameSpace="None"
+    SchemaMajorVersion="1" SchemaMinorVersion="1" SchemaSubMinorVersion="0"
+    MajorVersion="1" MinorVersion="0" SubMinorVersion="0"
+    ProductGuid="9627dc49-fd19-4f1a-a6a9-914eb000bde1"
+    VersionGuid="ca84771e-db43-4e6a-9984-db89c1b7418d">
+  <Category Name="Root">
+    <pFeature>DeviceSerialNumber</pFeature>
+    <pFeature>Width</pFeature>
+    <pFeature>Height</pFeature>
+    <pFeature>PixelFormat</pFeature>
+    <pFeature>AcquisitionFrameRate</pFeature>
+    <pFeature>TriggerMode</pFeature>
+  </Category>
+  <StringReg Name="DeviceSerialNumber" NameSpace="Standard">
+    <Address>0x20000000100</Address><Length>32</Length><AccessMode>RO</AccessMode>
+    <pPort>CameraPort</pPort>
+  </StringReg>
+  <FloatReg Name="AcquisitionFrameRate" NameSpace="Standard">
+    <Address>0x20000000120</Address><Length>4</Length><AccessMode>RW</AccessMode>
+    <pPort>CameraPort</pPort><Cachable>NoCache</Cachable><Endianess>BigEndian</Endianess>
+  </FloatReg>
+  <IntReg Name="TriggerModeReg">
+    <Address>0x20000000124</Address><Length>4</Length><AccessMode>RW</AccessMode>
+    <pPort>CameraPort</pPort><Cachable>NoCache</Cachable><Endianess>BigEndian</Endianess>
+  </IntReg>
+  <Enumeration Name="TriggerMode" NameSpace="Standard">
+    <EnumEntry Name="Off"><Value>0</Value></EnumEntry>
+    <EnumEntry Name="On"><Value>1</Value></EnumEntry>
+    <pValue>TriggerModeReg</pValue>
+  </Enumeration>
+  <IntReg Name="Width" NameSpace="Standard">
+    <Address>0x20000000128</Address><Length>4</Length><AccessMode>RO</AccessMode>
+    <pPort>CameraPort</pPort><Endianess>BigEndian</Endianess>
+  </IntReg>
+  <Integer Name="Height" NameSpace="Standard"><Value>4</Value></Integer>
+  <Enumeration Name="PixelFormat" NameSpace="Standard">
+    <EnumEntry Name="Mono16"><Value>17825799</Value></EnumEntry><Value>17825799</Value>
+  </Enumeration>
+  <Port Name="CameraPort"/>
+</RegisterDescription>

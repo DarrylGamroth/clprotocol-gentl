@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mocks:
+    name: CLProtocol producer and Iris SPA mocks
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    container:
+      image: docker.io/library/debian@sha256:7378260c0a098d27ac206225db5e7d92b8c7c84ea7afccc86eeb513756bbd392 # Debian 13
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      IRIS_DEB: iris-gentl_0.2.4_debian13_amd64.deb
+      PIPEWIREAO_TARBALL: PipeWireAO.v4.0.4.x86_64-linux-gnu.tar.gz
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates cmake curl g++ git libarchive-dev libxml2-dev \
+            meson ninja-build openssh-client pkgconf python3
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Check out Iris GenTL
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: DarrylGamroth/iris-gentl
+          ref: f8cab7fc205441336049a090b50b074b3cfc569d # v0.2.4
+          path: dependencies/iris
+          persist-credentials: false
+
+      - name: Check out primary_fixture library
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: DarrylGamroth/CLProtocol_primary_fixture
+          ref: 69722b4ec9bcb73754b36dff4427d43a168790c1
+          path: dependencies/primary_fixture
+          ssh-key: ${{ secrets.CLPROTOCOL_primary_fixture_READ_KEY }}
+          persist-credentials: false
+
+      - name: Check out Iris SPA
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: DarrylGamroth/pipewireao-spa-plugin-iris
+          ref: 3512ac080774588b488ab68875fec0c9ad962eae
+          path: dependencies/iris-spa
+          ssh-key: ${{ secrets.IRIS_SPA_READ_KEY }}
+          persist-credentials: false
+
+      - name: Install Iris v0.2.4 and PipeWireAO v4.0.4
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl --fail --silent --show-error --location --retry 3 --output "$IRIS_DEB" \
+            "https://github.com/DarrylGamroth/iris-gentl/releases/download/v0.2.4/$IRIS_DEB"
+          printf '%s  %s\n' 8051756af554c91c114441b97401722b726566101f07a2a1b0be3e51bf1858fa "$IRIS_DEB" \
+            | sha256sum --strict --check -
+          apt-get install -y --no-install-recommends "./$IRIS_DEB"
+          test "$(dpkg-query -W -f='${Version}' iris-gentl)" = 0.2.4
+
+          curl --fail --silent --show-error --location --retry 3 --output "$PIPEWIREAO_TARBALL" \
+            "https://github.com/DarrylGamroth/PipeWireAO_jll.jl/releases/download/PipeWireAO-v4.0.4+0/$PIPEWIREAO_TARBALL"
+          printf '%s  %s\n' bbc43785fd5c8bd0c0d5b724ebfc863326b1a2f59b16298df505268fe4c74014 "$PIPEWIREAO_TARBALL" \
+            | sha256sum --strict --check -
+          mkdir "$RUNNER_TEMP/pipewireao"
+          tar -xzf "$PIPEWIREAO_TARBALL" -C "$RUNNER_TEMP/pipewireao"
+
+      - name: Build the capture fixture and primary_fixture CLProtocol library
+        run: |
+          cmake -S dependencies/iris -B "$RUNNER_TEMP/iris-mock" -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/iris-mock" --target iris-test-cti --parallel
+          cmake -S dependencies/primary_fixture -B "$RUNNER_TEMP/primary_fixture" -G Ninja \
+            -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$RUNNER_TEMP/primary_fixture" --parallel
+
+      - name: Test the control producer with both libraries
+        run: |
+          cmake -S . -B "$RUNNER_TEMP/control" -G Ninja \
+            -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
+            -DGENTL_INCLUDE_DIR="$RUNNER_TEMP/iris-mock/_deps/emva/gentl-1.6" \
+            -DCLPROTOCOL_INCLUDE_DIR="$GITHUB_WORKSPACE/dependencies/primary_fixture/include/genicam_include" \
+            -Dprimary_fixture_PROVIDER="$RUNNER_TEMP/primary_fixture/libCLProtocol_primary_fixture.so" \
+            -DIRIS_GENTL=/usr/bin/iris-gentl
+          cmake --build "$RUNNER_TEMP/control" --parallel
+          ctest --test-dir "$RUNNER_TEMP/control" --output-on-failure --verbose
+
+      - name: Test Iris SPA with scalar and stacked buffer queries
+        run: |
+          pipewireao="$RUNNER_TEMP/pipewireao"
+          control="$RUNNER_TEMP/control"
+          export PKG_CONFIG_PATH="$pipewireao/lib/pkgconfig"
+          export LD_LIBRARY_PATH="$pipewireao/lib"
+          meson setup "$RUNNER_TEMP/iris-spa" dependencies/iris-spa -Dwerror=true \
+            -Diris-prefix=/usr -Diris-libdir=/usr/lib/x86_64-linux-gnu \
+            -Dtest-mock-cti="$RUNNER_TEMP/iris-mock/iris-test-cti.cti" \
+            -Dtest-pipewireao-bindir="$pipewireao/bin" \
+            -Dtest-control-cti="$control/clprotocol-gentl.cti" \
+            -Dtest-clserial="$control/tests/libmock-clserial.so" \
+            -Dtest-clprotocol-gentl-config="$control/tests/ports.tsv"
+          meson test -C "$RUNNER_TEMP/iris-spa" --print-errorlogs
+          IRIS_MOCK_STACKED_INFO=1 meson test -C "$RUNNER_TEMP/iris-spa" --print-errorlogs
