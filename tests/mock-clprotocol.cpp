@@ -87,6 +87,7 @@ CLINT32 CLPROTOCOL clpGetCLProtocolVersion(CLUINT32 *major, CLUINT32 *minor)
 
 CLINT32 CLPROTOCOL clpGetShortDeviceIDTemplates(CLINT8 *out, CLUINT32 *size)
 {
+    if (std::getenv("CLP_MOCK_SINGLE_TEMPLATE")) return copy(device_template, out, size);
     return copy("FixtureVendor#Family#DifferentModel\tFixtureVendor#Family#NoSerial", out, size);
 }
 

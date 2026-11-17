@@ -19,7 +19,7 @@ using namespace GenTL;
 
 int main(int argc, char **argv)
 {
-    CHECK(argc == 2);
+    CHECK(argc >= 3);
     auto *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!library) std::fprintf(stderr, "%s\n", dlerror());
     CHECK(library);
@@ -48,7 +48,8 @@ int main(int argc, char **argv)
     CHECK(TLOpenInterface(system, "CameraLinkSerial", &interface) == GC_ERR_SUCCESS);
     CHECK(IFUpdateDeviceList(interface, nullptr, 1000) == GC_ERR_SUCCESS);
 
-    for (const char *id : {"CLSerial-0", "CLSerial-1"}) {
+    for (int i = 2; i < argc; ++i) {
+        const char *id = argv[i];
         DEV_HANDLE device = nullptr;
         CHECK(IFOpenDevice(interface, id, DEVICE_ACCESS_READONLY, &device) == GC_ERR_SUCCESS);
         uint32_t count = 99;
@@ -81,5 +82,5 @@ int main(int argc, char **argv)
     CHECK(TLClose(system) == GC_ERR_SUCCESS);
     CHECK(GCCloseLib() == GC_ERR_SUCCESS);
     CHECK(dlclose(library) == 0);
-    std::puts("Both devices reported zero streams and rejected stream enumeration and open");
+    std::puts("Devices reported zero streams and rejected stream enumeration and open");
 }

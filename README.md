@@ -1,5 +1,8 @@
 # CLProtocol GenTL
 
+[![CI](https://github.com/DarrylGamroth/clprotocol-gentl/actions/workflows/ci.yml/badge.svg)](https://github.com/DarrylGamroth/clprotocol-gentl/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/DarrylGamroth/clprotocol-gentl/graph/badge.svg)](https://codecov.io/gh/DarrylGamroth/clprotocol-gentl)
+
 `clprotocol-gentl.cti` is a standalone GenTL producer for Camera Link camera
 control on Linux x86-64. It exposes remote GenApi XML and register I/O and
 reports zero data streams. Applications can acquire images through the frame
@@ -15,8 +18,7 @@ cmake --install build --prefix /path/to/install
 
 CMake downloads the EMVA CLProtocol SDK headers and uses the GenTL 1.6 headers
 provided by GenTLProducerCore. It uses an installed GenTLProducerCore package
-when available and otherwise fetches a pinned revision from GitHub. Fetching the
-private repository uses your existing Git SSH access. To use a local checkout,
+when available and otherwise fetches a pinned revision from GitHub. To use a local checkout,
 set `GENTL_PRODUCER_CORE_SOURCE_DIR`. To supply local headers, set
 `CLPROTOCOL_INCLUDE_DIR` and `GenTLHeaders_ROOT`.
 
@@ -64,7 +66,7 @@ the device closes.
 
 ## Simulator tests
 
-GitHub CI builds the producer and exercises environment-based discovery,
-XML loading, register I/O, and the zero-stream ABI. The paired Iris SPA
-tests stream mock frames while accessing camera features. See the
+GitHub CI uses in-tree mocks to exercise environment-based discovery, XML
+loading, register I/O, and the zero-stream ABI, and uploads GCC coverage to
+Codecov. The paired Iris SPA tests stream mock frames while accessing camera features. See the
 [workflow](.github/workflows/ci.yml) for the test dependencies and commands.

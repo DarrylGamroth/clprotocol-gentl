@@ -3,6 +3,7 @@ project(clprotocol_gentl VERSION 0.1.0 LANGUAGES CXX)
 option(BUILD_TESTING "Build the CLProtocol and Iris simulator tests" OFF)
 include(CTest)
 find_package(Threads REQUIRED)
+option(CLPROTOCOL_GENTL_COVERAGE "Instrument the producer with GCC coverage" OFF)
 
 include(cmake/EmvaCLProtocol.cmake)
 set(GENTL_PRODUCER_CORE_SOURCE_DIR "" CACHE PATH
@@ -17,8 +18,8 @@ endif()
 if(NOT TARGET GenTLProducerCore::gentl_producer_core)
     include(FetchContent)
     FetchContent_Declare(GenTLProducerCore
-        GIT_REPOSITORY ssh://git@github.com/DarrylGamroth/GenTLProducerCore.git
-        GIT_TAG 26a3b9f1c99a50928a29f3c336e7fdb2d7e4bda3)
+        GIT_REPOSITORY https://github.com/DarrylGamroth/GenTLProducerCore.git
+        GIT_TAG 0fb0868f8a9d50378ac54feb5379533577ff9db1)
     function(add_gentl_producer_core)
         set(BUILD_TESTING OFF)
         if(GENTL_PRODUCER_CORE_SOURCE_DIR)
@@ -37,6 +38,10 @@ set_target_properties(clprotocol-gentl PROPERTIES
     PREFIX "" SUFFIX ".cti" CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(clprotocol-gentl PRIVATE "${CLPROTOCOL_INCLUDE_DIR}")
 target_compile_options(clprotocol-gentl PRIVATE -Wall -Wextra -Wpedantic)
+if(CLPROTOCOL_GENTL_COVERAGE)
+    target_compile_options(clprotocol-gentl PRIVATE --coverage -O0 -g)
+    target_link_options(clprotocol-gentl PRIVATE --coverage)
+endif()
 target_link_libraries(clprotocol-gentl PRIVATE
     GenTLProducerCore::gentl_producer_core Threads::Threads ${CMAKE_DL_LIBS})
 include(GNUInstallDirs)

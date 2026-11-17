@@ -11,6 +11,45 @@ permissions:
   contents: read
 
 jobs:
+  coverage:
+    name: In-tree simulator coverage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcovr ninja-build libarchive13t64 libxml2
+          deb="$RUNNER_TEMP/iris-gentl_0.2.4_debian13_amd64.deb"
+          curl --fail --silent --show-error --location --retry 3 --output "$deb" \
+            "https://github.com/DarrylGamroth/iris-gentl/releases/download/v0.2.4/${deb##*/}"
+          printf '%s  %s\n' 8051756af554c91c114441b97401722b726566101f07a2a1b0be3e51bf1858fa "$deb" \
+            | sha256sum --strict --check -
+          sudo apt-get install -y "$deb"
+      - name: Build, test, and collect coverage
+        run: |
+          build="$RUNNER_TEMP/clprotocol-coverage"
+          cmake -S . -B "$build" -G Ninja -DBUILD_TESTING=ON -DCLPROTOCOL_GENTL_COVERAGE=ON
+          cmake --build "$build" --parallel
+          ctest --test-dir "$build" --output-on-failure --no-tests=error
+          gcovr --root "$GITHUB_WORKSPACE" --filter '^src/' \
+            --cobertura "$RUNNER_TEMP/coverage.xml" --print-summary "$build"
+      - name: Upload coverage to Codecov
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: ${{ runner.temp }}/coverage.xml
+          disable_search: true
+          plugins: noop
+          fail_ci_if_error: true
+
   mocks:
     name: CLProtocol producer and Iris SPA mocks
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -40,9 +79,8 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: DarrylGamroth/GenTLProducerCore
-          ref: 26a3b9f1c99a50928a29f3c336e7fdb2d7e4bda3 # 0.2.5
+          ref: 0fb0868f8a9d50378ac54feb5379533577ff9db1
           path: dependencies/gentl-producer-core
-          ssh-key: ${{ secrets.GENTL_PRODUCER_CORE_READ_KEY }}
           persist-credentials: false
 
       - name: Check out Iris GenTL
