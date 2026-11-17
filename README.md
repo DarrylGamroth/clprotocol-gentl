@@ -30,10 +30,9 @@ The producer uses the CLProtocol SDK and the matching CLAllSerial runtime and
 camera driver. GenApi runs in the consumer. The producer's Linux loader and
 GenTLProducerCore determine which systems can build and load the CTI.
 
-GitHub CI runs the mock suite on Linux x86-64 and AArch64. It cross-builds
-and runs the suite under emulation for 32-bit ARM hard-float. Windows
-requires a port of the CTI loader and Core. EMVA ships GenApi for macOS but
-its CLProtocol package has no macOS runtime.
+GitHub CI runs the mock suite on Linux x86-64 and AArch64. Windows requires
+a port of the CTI loader and Core. EMVA ships GenApi for macOS but its
+CLProtocol package has no macOS runtime.
 
 ## Discover cameras
 
@@ -44,7 +43,6 @@ registration directory.
 | --- | --- |
 | x86-64 | `Linux64_x64` |
 | AArch64 | `Linux64_ARM` |
-| ARM hard-float (32-bit) | `Linux32_ARMhf` |
 
 Place any accompanying XML in the registration directory. Make the EMVA
 CLAllSerial runtime available to the dynamic loader or place it in the same

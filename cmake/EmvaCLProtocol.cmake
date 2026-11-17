@@ -8,16 +8,6 @@ if(clprotocol_processor MATCHES "^(x86_64|amd64)$" AND CMAKE_SIZEOF_VOID_P EQUAL
     set(CLPROTOCOL_PLATFORM Linux64_x64)
 elseif(clprotocol_processor MATCHES "^(aarch64|arm64)$" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     set(CLPROTOCOL_PLATFORM Linux64_ARM)
-elseif(clprotocol_processor MATCHES "^arm(v[5-8].*|hf)?$" AND CMAKE_SIZEOF_VOID_P EQUAL 4)
-    include(CheckCXXSourceCompiles)
-    check_cxx_source_compiles("
-        #ifndef __ARM_PCS_VFP
-        #error CLProtocol provides an ARM hard-float SDK
-        #endif
-        int main() {}" CLPROTOCOL_ARM_HARDFLOAT)
-    if(CLPROTOCOL_ARM_HARDFLOAT)
-        set(CLPROTOCOL_PLATFORM Linux32_ARMhf)
-    endif()
 endif()
 if(NOT CLPROTOCOL_PLATFORM)
     message(FATAL_ERROR "No EMVA CLProtocol SDK layout for ${CMAKE_SYSTEM_PROCESSOR} with ${CMAKE_SIZEOF_VOID_P}-byte pointers")

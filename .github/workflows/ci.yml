@@ -11,39 +11,18 @@ permissions:
   contents: read
 
 jobs:
-  linux-platforms:
-    name: Linux ${{ matrix.architecture }}
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - architecture: AArch64
-            runner: ubuntu-24.04-arm
-          - architecture: ARM hard-float (32-bit)
-            runner: ubuntu-24.04
-            armhf: true
+  linux-aarch64:
+    name: Linux AArch64
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
-      - name: Install the ARM hard-float cross-toolchain and emulator
-        if: matrix.armhf
-        run: sudo apt-get update && sudo apt-get install -y g++-arm-linux-gnueabihf qemu-user
       - name: Build and test with the in-tree mocks
-        env:
-          CLPROTOCOL_TEST_ARMHF: ${{ matrix.armhf }}
         run: |
           build="$RUNNER_TEMP/clprotocol-platform"
-          toolchain=()
-          if [[ "$CLPROTOCOL_TEST_ARMHF" == true ]]; then
-            toolchain+=(-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=armv7l
-              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
-              '-DCMAKE_CROSSCOMPILING_EMULATOR=qemu-arm;-L;/usr/arm-linux-gnueabihf')
-          fi
           cmake -S . -B "$build" -DCMAKE_BUILD_TYPE=Release \
-            "${toolchain[@]}" \
             -DBUILD_TESTING=ON -DCLPROTOCOL_GENTL_TEST_IRIS=OFF
           cmake --build "$build" --parallel --target \
             clprotocol-gentl mock-clserial mock-clallserial mock-clprotocol mock-clprotocol-with-serial test-control-only
