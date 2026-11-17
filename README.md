@@ -5,8 +5,11 @@ Camera Link cameras that have a CLProtocol library. The same CTI can use
 different libraries on different configured serial channels. It exposes
 remote GenApi XML and register I/O and reports zero data streams. An
 application can acquire images through the frame grabber's capture CTI.
-The producer implements its own GenTL entry points and builds without
-GenTLProducerCore, Iris, or GenApi.
+The producer statically links the base GenTLProducerCore library for
+port I/O, XML URL metadata, information queries, and errors. The CTI
+owns the control-only GenTL entry points. GenTLProducerCore is a
+build dependency. The installed CTI loads the configured CLSerial
+and CLProtocol libraries at runtime.
 
 The implementation targets Linux x86-64 with the GenTL 1.6 and CLProtocol
 1.x ABIs. The Camera Link serial library and camera CLProtocol libraries
@@ -14,18 +17,22 @@ are installed separately.
 
 ## Build
 
-Point CMake to the EMVA [GenTL and CLProtocol headers](https://www.emva.org/standards-technology/genicam/genicam-downloads/).
+Install the GenTLProducerCore 0.2.5 development package or supply its
+source checkout. Point CMake to the EMVA [GenTL and CLProtocol headers](https://www.emva.org/standards-technology/genicam/genicam-downloads/).
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-  -DGENTL_INCLUDE_DIR=/path/to/gentl-1.6 \
+  -DCMAKE_PREFIX_PATH=/path/to/gentl-producer-core/install \
+  -DGenTLHeaders_ROOT=/path/to/gentl-1.6 \
   -DCLPROTOCOL_INCLUDE_DIR=/path/to/include
 cmake --build build
 ```
 
-The second include directory contains `CLProtocol/CLProtocol.h`,
-`CLProtocol/ClSerial.h`, and `CLProtocol/ISerial.h`. The install target
-puts the CTI in the configured library directory under `gentl/`.
+For a source build, use `-DGENTL_PRODUCER_CORE_SOURCE_DIR=/path/to/GenTLProducerCore`
+in place of `CMAKE_PREFIX_PATH`. The CLProtocol include directory contains
+`CLProtocol/CLProtocol.h`, `CLProtocol/ClSerial.h`, and `CLProtocol/ISerial.h`.
+The install target puts the CTI in the configured library directory under
+`gentl/`.
 
 ## Configure ports
 
@@ -79,7 +86,9 @@ both camera libraries. The second fixture uses a DeviceID without a
 serial token, a different serial protocol and GenApi port name, and
 big-endian registers above 4 GiB. Its usable XML is on disk after a
 malformed XML candidate. The tests verify discovery, XML loading,
-feature read/write, and the absence of data streams.
+feature read/write, and the absence of data streams. A direct GenTL
+test checks that both devices report zero streams and reject stream
+enumeration and open requests.
 
 For the Iris SPA integration tests, use `build/clprotocol-gentl.cti`
 for `test-control-cti`, `build/tests/libmock-clserial.so` for
@@ -90,13 +99,15 @@ control alongside image capture requires hardware qualification.
 
 ## GitHub CI
 
-CI pins the Iris release, its in-tree capture fixture, the primary_fixture
-CLProtocol library, and the Iris SPA source revision. It runs the
-standalone producer test with both CLProtocol libraries, followed by
+CI pins GenTLProducerCore, the Iris release and its in-tree capture
+fixture, the primary_fixture CLProtocol library, and the Iris SPA source
+revision. It runs the producer tests with both CLProtocol libraries
+and checks the zero-stream ABI, followed by
 the Iris SPA suite with scalar and stacked buffer queries. The
 paired PipeWireAO daemon test streams and controls both mock cameras.
 
-The primary_fixture and Iris SPA checkouts use independent read-only deploy keys
-stored as `CLPROTOCOL_primary_fixture_READ_KEY` and `IRIS_SPA_READ_KEY` in the
-repository's Actions secrets. The workflow runs on main, same-repository
+The GenTLProducerCore, primary_fixture, and Iris SPA checkouts use independent
+read-only deploy keys stored as `GENTL_PRODUCER_CORE_READ_KEY`,
+`CLPROTOCOL_primary_fixture_READ_KEY`, and `IRIS_SPA_READ_KEY` in the repository's
+Actions secrets. The workflow runs on main, same-repository
 pull requests, and manual dispatch.

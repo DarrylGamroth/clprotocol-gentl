@@ -2,12 +2,11 @@
 #include "xml.hpp"
 
 #include <GenTL.h>
-#include <dlfcn.h>
+#include <gentl_producer_core/error.hpp>
+#include <gentl_producer_core/info.hpp>
 
 #include <algorithm>
-#include <array>
 #include <chrono>
-#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -18,6 +17,7 @@
 namespace GenTL {
 namespace {
 using namespace clprotocol;
+namespace core = gentl_producer_core;
 
 constexpr char interface_id[] = "CameraLinkSerial";
 constexpr auto max_register_address = static_cast<uint64_t>(std::numeric_limits<CLINT64>::max());
@@ -26,9 +26,7 @@ struct Device {
     CameraInfo identity;
     std::unique_ptr<CameraConnection> connection;
     std::unique_ptr<XmlFiles> xml;
-    const PortConfig *port;
-    bool writable;
-    char port_handle;
+    core::PortModel port;
 };
 
 struct Producer {
@@ -41,8 +39,6 @@ struct Producer {
 } producer;
 
 std::mutex mutex;
-thread_local GC_ERROR last_code = GC_ERR_SUCCESS;
-thread_local std::array<char, 512> last_text{};
 
 struct Failure { GC_ERROR code; const char *text; };
 
@@ -51,10 +47,19 @@ void require(bool condition, GC_ERROR code, const char *text)
     if (!condition) throw Failure{code, text};
 }
 
+void check(GC_ERROR code, const char *text)
+{
+    require(code == GC_ERR_SUCCESS, code, text);
+}
+
 GC_ERROR error(GC_ERROR code, const char *text) noexcept
 {
-    last_code = code;
-    std::snprintf(last_text.data(), last_text.size(), "%s", text);
+    try {
+        core::set_last_error(code, std::string(text, strnlen(text, 511)));
+    } catch (...) {
+        // The ABI must still return the original error if storing its text fails.
+        try { core::set_last_error(code, {}); } catch (...) {}
+    }
     return code;
 }
 
@@ -117,7 +122,7 @@ Device &device_for(void *handle, bool remote_port = false)
     initialize_check();
     for (const auto &entry : producer.open) {
         auto *device = entry.second.get();
-        void *expected = remote_port ? static_cast<void *>(&device->port_handle) : device;
+        void *expected = remote_port ? static_cast<void *>(&device->port) : device;
         if (handle == expected) return *device;
     }
     throw Failure{GC_ERR_INVALID_HANDLE, remote_port ? "invalid remote port handle" : "invalid device handle"};
@@ -137,26 +142,10 @@ const CameraInfo &find_camera(const char *id)
     return *found;
 }
 
-void copy(const void *data, size_t length, void *output, size_t *size)
-{
-    require(size, GC_ERR_INVALID_PARAMETER, "missing size");
-    const auto supplied = output ? *size : 0;
-    *size = length;
-    // GenTL information queries use a null buffer to request the size.
-    if (!output) return;
-    require(supplied >= length, GC_ERR_BUFFER_TOO_SMALL, "buffer too small");
-    std::memcpy(output, data, length);
-}
-
 void string(std::string_view value, void *output, size_t *size)
 {
-    require(size, GC_ERR_INVALID_PARAMETER, "missing size");
-    const auto supplied = output ? *size : 0;
-    *size = value.size() + 1;
-    if (!output) return;
-    require(supplied >= *size, GC_ERR_BUFFER_TOO_SMALL, "string buffer too small");
-    std::memcpy(output, value.data(), value.size());
-    static_cast<char *>(output)[value.size()] = '\0';
+    check(core::copy_string(value, INFO_DATATYPE_STRING, INFO_DATATYPE_STRING, output, size),
+          "cannot copy string");
 }
 
 struct Info {
@@ -165,12 +154,14 @@ struct Info {
     size_t *size;
 
     void text(std::string_view value) const {
-        if (type) *type = INFO_DATATYPE_STRING;
-        string(value, output, size);
+        INFO_DATATYPE ignored;
+        check(core::info_string(value, type ? type : &ignored, output, size),
+              "cannot copy string information");
     }
     template<class T> void number(INFO_DATATYPE kind, T value) const {
-        if (type) *type = kind;
-        copy(&value, sizeof(value), output, size);
+        INFO_DATATYPE ignored;
+        check(core::info_scalar(value, kind, type ? type : &ignored, output, size),
+              "cannot copy scalar information");
     }
     void flag(bool value) const { number(INFO_DATATYPE_BOOL8, static_cast<bool8_t>(value)); }
 };
@@ -186,11 +177,8 @@ void system_info(TL_INFO_CMD command, const Info &out)
     case TL_INFO_TLTYPE: return out.text(TLTypeCLName);
     case TL_INFO_NAME:
     case TL_INFO_PATHNAME: {
-        Dl_info library{};
-        require(dladdr(&producer, &library) && library.dli_fname, GC_ERR_NOT_AVAILABLE,
-                "CTI path unavailable");
-        const std::string_view path(library.dli_fname);
-        return out.text(command == TL_INFO_NAME ? path.substr(path.find_last_of('/') + 1) : path);
+        const auto path = core::cti_runtime_path("clprotocol-gentl.cti");
+        return out.text(command == TL_INFO_NAME ? path.filename().string() : path.string());
     }
     case TL_INFO_CHAR_ENCODING: return out.number(INFO_DATATYPE_INT32, int32_t{TL_CHAR_ENCODING_UTF8});
     case TL_INFO_GENTL_VER_MAJOR: return out.number(INFO_DATATYPE_UINT32, uint32_t{1});
@@ -227,7 +215,7 @@ void device_info(const CameraInfo &camera, DEVICE_INFO_CMD command, const Info &
         auto opened = producer.open.find(camera.channel);
         auto status = DEVICE_ACCESS_STATUS_READWRITE;
         if (opened != producer.open.end())
-            status = opened->second->writable ? DEVICE_ACCESS_STATUS_OPEN_READWRITE
+            status = opened->second->port.descriptor().write_access ? DEVICE_ACCESS_STATUS_OPEN_READWRITE
                                               : DEVICE_ACCESS_STATUS_OPEN_READONLY;
         return out.number(INFO_DATATYPE_INT32, static_cast<int32_t>(status));
     }
@@ -288,33 +276,60 @@ void close_interface()
     producer.interface_open = false;
 }
 
-size_t transfer_size(uint64_t address, const void *buffer, size_t *size)
+core::PortModel make_port(const CameraInfo &camera, CameraConnection &connection,
+                          const PortConfig &config, XmlFiles &xml, bool writable)
+{
+    auto descriptor = core::make_descriptor(device_id(camera), camera.manufacturer, camera.model,
+                                            TLTypeCLName, TLRemoteDeviceModuleName, config.port_name,
+                                            "1.0", writable);
+    descriptor.little_endian = config.little_endian;
+
+    std::vector<core::PortModel::RegisterRegion> registers;
+    registers.push_back({
+        .address = 0,
+        .data = {},
+        .size = max_register_address + 1,
+        .readable = true,
+        .writable = writable,
+        .access = [&connection](uint64_t address, std::span<std::byte> bytes, bool write) {
+            if (!bytes.empty()) {
+                if (write)
+                    connection.write(address, bytes.data(), bytes.size());
+                else
+                    connection.read(address, bytes.data(), bytes.size(), control_timeout_ms);
+            }
+            return GC_ERR_SUCCESS;
+        },
+    });
+    return {std::move(descriptor), xml.take_urls(), std::move(registers)};
+}
+
+void check_transfer(uint64_t address, const void *buffer, size_t *size)
 {
     require(size, GC_ERR_INVALID_PARAMETER, "missing transfer size");
-    const auto requested = *size;
-    *size = 0;
-    require(buffer || !requested, GC_ERR_INVALID_PARAMETER, "missing transfer buffer");
-    require(address <= max_register_address && requested <= max_register_address &&
-            (!requested || requested - 1 <= max_register_address - address),
-            GC_ERR_INVALID_ADDRESS, "register extent exceeds the CLProtocol address range");
-    return requested;
+    if (!buffer && *size) {
+        *size = 0;
+        throw Failure{GC_ERR_INVALID_PARAMETER, "missing transfer buffer"};
+    }
+    // The CLProtocol ABI takes both address and length as signed 64-bit values.
+    if (address > max_register_address || *size > max_register_address) {
+        *size = 0;
+        throw Failure{GC_ERR_INVALID_ADDRESS, "register extent exceeds the CLProtocol address range"};
+    }
 }
 
 void read_port(Device &camera, uint64_t address, void *buffer, size_t *size)
 {
-    const auto requested = transfer_size(address, buffer, size);
-    if (!requested) return;
-    camera.connection->read(address, buffer, requested, control_timeout_ms);
-    *size = requested;
+    check_transfer(address, buffer, size);
+    std::byte empty{};
+    check(camera.port.read(address, buffer ? buffer : &empty, size), "CLProtocol register read failed");
 }
 
 void write_port(Device &camera, uint64_t address, const void *buffer, size_t *size)
 {
-    const auto requested = transfer_size(address, buffer, size);
-    require(camera.writable, GC_ERR_ACCESS_DENIED, "camera opened read-only");
-    if (!requested) return;
-    camera.connection->write(address, buffer, requested);
-    *size = requested;
+    check_transfer(address, buffer, size);
+    const std::byte empty{};
+    check(camera.port.write(address, buffer ? buffer : &empty, size), "CLProtocol register write failed");
 }
 } // namespace
 
@@ -350,13 +365,16 @@ GC_API GCCloseLib()
 
 GC_API GCGetLastError(GC_ERROR *code, char *output, size_t *size)
 {
-    if (code) *code = last_code;
+    if (!size && (output || !code)) return GC_ERR_INVALID_PARAMETER;
     try {
-        if (size) string(last_text.data(), output, size);
-        else if (output || !code) return GC_ERR_INVALID_PARAMETER;
-        return GC_ERR_SUCCESS;
-    } catch (const Failure &failure) {
-        return failure.code;
+        const auto [error_code, message] = core::last_error();
+        if (code) *code = error_code;
+        return size ? core::copy_string(message, INFO_DATATYPE_STRING, INFO_DATATYPE_STRING,
+                                        output, size) : GC_ERR_SUCCESS;
+    } catch (const std::bad_alloc &) {
+        return GC_ERR_OUT_OF_MEMORY;
+    } catch (...) {
+        return GC_ERR_ERROR;
     }
 }
 
@@ -504,10 +522,11 @@ GC_API IFOpenDevice(IF_HANDLE handle, const char *id, DEVICE_ACCESS_FLAGS mode, 
         require(!producer.open.count(camera.channel), GC_ERR_RESOURCE_IN_USE, "serial channel already open");
         auto connection = producer.libraries->connect(camera.channel, control_timeout_ms, &camera);
         require(connection->identity() == camera, GC_ERR_INVALID_ID, "camera identity changed since discovery");
-        const auto &port = producer.libraries->ports().at(camera.channel);
-        auto xml = std::make_unique<XmlFiles>(*connection, port);
+        const auto &config = producer.libraries->ports().at(camera.channel);
+        auto xml = std::make_unique<XmlFiles>(*connection, config);
+        auto port = make_port(camera, *connection, config, *xml, mode != DEVICE_ACCESS_READONLY);
         auto opened = std::make_unique<Device>(Device{camera, std::move(connection), std::move(xml),
-                                                       &port, mode != DEVICE_ACCESS_READONLY, {}});
+                                                       std::move(port)});
         const auto inserted = producer.open.emplace(camera.channel, std::move(opened));
         *device = inserted.first->second.get();
     });
@@ -533,7 +552,7 @@ GC_API DevGetPort(DEV_HANDLE handle, PORT_HANDLE *port)
     return call([&] {
         auto &camera = device_for(handle);
         require(port, GC_ERR_INVALID_PARAMETER, "missing remote port output");
-        *port = &camera.port_handle;
+        *port = &camera.port;
     });
 }
 
@@ -572,20 +591,20 @@ GC_API GCGetPortInfo(PORT_HANDLE handle, PORT_INFO_CMD command, INFO_DATATYPE *t
                      void *output, size_t *size)
 {
     return call([&] {
-        const auto &camera = device_for(handle, true);
+        const auto &port = device_for(handle, true).port.descriptor();
         const Info out{type, output, size};
         switch (command) {
-        case PORT_INFO_ID: return out.text(device_id(camera.identity));
-        case PORT_INFO_VENDOR: return out.text(camera.identity.manufacturer);
-        case PORT_INFO_MODEL: return out.text(camera.identity.model);
-        case PORT_INFO_TLTYPE: return out.text(TLTypeCLName);
-        case PORT_INFO_MODULE: return out.text(TLRemoteDeviceModuleName);
-        case PORT_INFO_VERSION: return out.text("1.0");
-        case PORT_INFO_PORTNAME: return out.text(camera.port->port_name);
-        case PORT_INFO_LITTLE_ENDIAN: return out.flag(camera.port->little_endian);
-        case PORT_INFO_BIG_ENDIAN: return out.flag(!camera.port->little_endian);
-        case PORT_INFO_ACCESS_READ: return out.flag(true);
-        case PORT_INFO_ACCESS_WRITE: return out.flag(camera.writable);
+        case PORT_INFO_ID: return out.text(port.id);
+        case PORT_INFO_VENDOR: return out.text(port.vendor);
+        case PORT_INFO_MODEL: return out.text(port.model);
+        case PORT_INFO_TLTYPE: return out.text(port.tl_type);
+        case PORT_INFO_MODULE: return out.text(port.module_name);
+        case PORT_INFO_VERSION: return out.text(port.version);
+        case PORT_INFO_PORTNAME: return out.text(port.port_name);
+        case PORT_INFO_LITTLE_ENDIAN: return out.flag(port.little_endian);
+        case PORT_INFO_BIG_ENDIAN: return out.flag(!port.little_endian);
+        case PORT_INFO_ACCESS_READ: return out.flag(port.read_access);
+        case PORT_INFO_ACCESS_WRITE: return out.flag(port.write_access);
         case PORT_INFO_ACCESS_NA:
         case PORT_INFO_ACCESS_NI: return out.flag(false);
         default: throw Failure{GC_ERR_INVALID_PARAMETER, "unknown port info command"};
@@ -595,13 +614,13 @@ GC_API GCGetPortInfo(PORT_HANDLE handle, PORT_INFO_CMD command, INFO_DATATYPE *t
 
 GC_API GCGetPortURL(PORT_HANDLE handle, char *url, size_t *size)
 {
-    return call([&] { string(device_for(handle, true).xml->files().front().url, url, size); });
+    return call([&] { string(device_for(handle, true).port.urls().front().url, url, size); });
 }
 
 GC_API GCGetNumPortURLs(PORT_HANDLE handle, uint32_t *count)
 {
     return call([&] {
-        const auto &files = device_for(handle, true).xml->files();
+        const auto &files = device_for(handle, true).port.urls();
         require(count, GC_ERR_INVALID_PARAMETER, "missing URL count output");
         *count = static_cast<uint32_t>(files.size());
     });
@@ -611,26 +630,28 @@ GC_API GCGetPortURLInfo(PORT_HANDLE handle, uint32_t index, URL_INFO_CMD command
                        INFO_DATATYPE *type, void *output, size_t *size)
 {
     return call([&] {
-        const auto &files = device_for(handle, true).xml->files();
+        const auto &files = device_for(handle, true).port.urls();
         require(index < files.size(), GC_ERR_INVALID_INDEX, "no such URL index");
         const auto &file = files[index];
         const Info out{type, output, size};
         switch (command) {
         case URL_INFO_URL: return out.text(file.url);
-        case URL_INFO_SCHEME: return out.number(INFO_DATATYPE_INT32, int32_t{URL_SCHEME_FILE});
+        case URL_INFO_SCHEME: return out.number(INFO_DATATYPE_INT32, file.scheme);
         case URL_INFO_FILENAME: return out.text(file.filename);
-        case URL_INFO_FILE_SIZE: return out.number(INFO_DATATYPE_UINT64, file.size);
-        case URL_INFO_SCHEMA_VER_MAJOR:
-        case URL_INFO_SCHEMA_VER_MINOR:
-        case URL_INFO_FILE_VER_MAJOR:
-        case URL_INFO_FILE_VER_MINOR:
-        case URL_INFO_FILE_VER_SUBMINOR: {
-            const auto version = file.version[command - URL_INFO_SCHEMA_VER_MAJOR];
-            require(version >= 0, GC_ERR_NOT_AVAILABLE, "XML version unavailable");
-            return out.number(INFO_DATATYPE_INT32, version);
+        case URL_INFO_FILE_SIZE: return out.number(INFO_DATATYPE_UINT64, file.file_size);
+        default: break;
         }
+        int32_t version;
+        switch (command) {
+        case URL_INFO_SCHEMA_VER_MAJOR: version = file.schema_major; break;
+        case URL_INFO_SCHEMA_VER_MINOR: version = file.schema_minor; break;
+        case URL_INFO_FILE_VER_MAJOR: version = file.file_major; break;
+        case URL_INFO_FILE_VER_MINOR: version = file.file_minor; break;
+        case URL_INFO_FILE_VER_SUBMINOR: version = file.file_subminor; break;
         default: throw Failure{GC_ERR_NOT_AVAILABLE, "XML metadata unavailable"};
         }
+        require(version >= 0, GC_ERR_NOT_AVAILABLE, "XML version unavailable");
+        return out.number(INFO_DATATYPE_INT32, version);
     });
 }
 

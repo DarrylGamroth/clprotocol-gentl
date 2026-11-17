@@ -2,6 +2,7 @@
 #include "xml.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <charconv>
 #include <cstdlib>
@@ -148,16 +149,25 @@ XmlFiles::XmlFiles(CameraConnection &camera, const PortConfig &port) : directory
         auto installed = installed_xml(port, camera.identity());
         size_t total_bytes = 0;
         const auto add = [&](const std::string &id, const std::vector<char> &bytes) {
-            if (files_.size() >= max_files || bytes.size() > max_total_bytes - total_bytes)
+            if (urls_.size() >= max_files || bytes.size() > max_total_bytes - total_bytes)
                 throw std::runtime_error("CLProtocol XML bundle exceeds the size limit");
             const bool zipped = bytes.size() >= 4 &&
                 std::equal(bytes.begin(), bytes.begin() + 4, "PK\x03\x04");
-            const auto file = directory_ / (std::to_string(files_.size()) + (zipped ? ".zip" : ".xml"));
+            const auto file = directory_ / (std::to_string(urls_.size()) + (zipped ? ".zip" : ".xml"));
             std::ofstream output(file, std::ios::binary);
             output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
             output.close();
             if (!output) throw std::runtime_error("cannot publish CLProtocol XML file");
-            files_.push_back({file.string(), file_url(file), bytes.size(), xml_version(id)});
+            const auto version = xml_version(id);
+            urls_.push_back({.url = file_url(file),
+                             .filename = file.string(),
+                             .schema_major = version[0],
+                             .schema_minor = version[1],
+                             .file_major = version[2],
+                             .file_minor = version[3],
+                             .file_subminor = version[4],
+                             .file_size = bytes.size(),
+                             .scheme = GenTL::URL_SCHEME_FILE});
             total_bytes += bytes.size();
         };
 
@@ -180,7 +190,7 @@ XmlFiles::XmlFiles(CameraConnection &camera, const PortConfig &port) : directory
             return a.second.specificity > b.second.specificity;
         });
         for (const auto &entry : candidates) add(entry.first, read_file(entry.second.path));
-        if (files_.empty()) {
+        if (urls_.empty()) {
             if (first_failure) std::rethrow_exception(first_failure);
             throw ProtocolError(CL_ERR_NO_XMLDESCRIPTION_FOUND, "no CLProtocol XML for " + camera.identity().short_id);
         }

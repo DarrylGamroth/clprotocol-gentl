@@ -3,17 +3,9 @@
 
 #include "protocol.hpp"
 
-#include <array>
+#include <gentl_producer_core/port_model.hpp>
 
 namespace clprotocol {
-
-struct XmlFile {
-    std::string filename;
-    std::string url;
-    std::uint64_t size;
-    // Schema major/minor followed by document major/minor/subminor.
-    std::array<std::int32_t, 5> version;
-};
 
 class XmlFiles {
 public:
@@ -21,11 +13,11 @@ public:
     ~XmlFiles();
     XmlFiles(const XmlFiles &) = delete;
     XmlFiles &operator=(const XmlFiles &) = delete;
-    const std::vector<XmlFile> &files() const { return files_; }
+    std::vector<gentl_producer_core::PortUrlInfo> take_urls() { return std::move(urls_); }
 
 private:
     std::filesystem::path directory_;
-    std::vector<XmlFile> files_;
+    std::vector<gentl_producer_core::PortUrlInfo> urls_;
 };
 
 } // namespace clprotocol

@@ -36,6 +36,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Check out GenTLProducerCore
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: DarrylGamroth/GenTLProducerCore
+          ref: 26a3b9f1c99a50928a29f3c336e7fdb2d7e4bda3 # 0.2.5
+          path: dependencies/gentl-producer-core
+          ssh-key: ${{ secrets.GENTL_PRODUCER_CORE_READ_KEY }}
+          persist-credentials: false
+
       - name: Check out Iris GenTL
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -92,7 +101,9 @@ jobs:
         run: |
           cmake -S . -B "$RUNNER_TEMP/control" -G Ninja \
             -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release \
-            -DGENTL_INCLUDE_DIR="$RUNNER_TEMP/iris-mock/_deps/emva/gentl-1.6" \
+            -DGENTL_PRODUCER_CORE_SOURCE_DIR="$GITHUB_WORKSPACE/dependencies/gentl-producer-core" \
+            -DGenTLHeaders_ROOT="$RUNNER_TEMP/iris-mock/_deps/emva/gentl-1.6" \
+            -DGenTLProducerCore_FETCH_GENTL_HEADERS=OFF \
             -DCLPROTOCOL_INCLUDE_DIR="$GITHUB_WORKSPACE/dependencies/primary_fixture/include/genicam_include" \
             -Dprimary_fixture_PROVIDER="$RUNNER_TEMP/primary_fixture/libCLProtocol_primary_fixture.so" \
             -DIRIS_GENTL=/usr/bin/iris-gentl

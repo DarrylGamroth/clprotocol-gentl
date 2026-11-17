@@ -25,3 +25,12 @@ add_test(NAME iris-cli COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_D
     "${IRIS_GENTL}" "$<TARGET_FILE:clprotocol-gentl>" "$<TARGET_FILE:mock-clserial>"
     "${CMAKE_CURRENT_BINARY_DIR}/ports.tsv")
 set_tests_properties(iris-cli PROPERTIES TIMEOUT 40)
+
+add_executable(test-control-only test-control-only.cpp)
+target_compile_features(test-control-only PRIVATE cxx_std_17)
+target_link_libraries(test-control-only PRIVATE GenTLHeaders::GenTLHeaders ${CMAKE_DL_LIBS})
+add_test(NAME control-only COMMAND "${CMAKE_COMMAND}" -E env
+    "CLPROTOCOL_GENTL_CONFIG=${CMAKE_CURRENT_BINARY_DIR}/ports.tsv"
+    "CLPROTOCOL_GENTL_SERIAL=$<TARGET_FILE:mock-clserial>"
+    "$<TARGET_FILE:test-control-only>" "$<TARGET_FILE:clprotocol-gentl>")
+set_tests_properties(control-only PROPERTIES TIMEOUT 20)
