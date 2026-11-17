@@ -4,22 +4,31 @@ option(BUILD_TESTING "Build the CLProtocol and Iris simulator tests" OFF)
 include(CTest)
 find_package(Threads REQUIRED)
 
-find_path(CLPROTOCOL_INCLUDE_DIR CLProtocol/CLProtocol.h REQUIRED)
+include(cmake/EmvaCLProtocol.cmake)
 set(GENTL_PRODUCER_CORE_SOURCE_DIR "" CACHE PATH
     "Path to a GenTLProducerCore source checkout in place of an installed package")
 set(GENTL_INCLUDE_DIR "" CACHE PATH "Optional directory containing the EMVA GenTL.h")
 if(GENTL_INCLUDE_DIR AND NOT GenTLHeaders_ROOT)
     set(GenTLHeaders_ROOT "${GENTL_INCLUDE_DIR}" CACHE PATH "Root containing the EMVA GenTL.h" FORCE)
 endif()
-if(GENTL_PRODUCER_CORE_SOURCE_DIR)
+if(NOT GENTL_PRODUCER_CORE_SOURCE_DIR)
+    find_package(GenTLProducerCore 0.2.5 CONFIG QUIET)
+endif()
+if(NOT TARGET GenTLProducerCore::gentl_producer_core)
+    include(FetchContent)
+    FetchContent_Declare(GenTLProducerCore
+        GIT_REPOSITORY ssh://git@github.com/DarrylGamroth/GenTLProducerCore.git
+        GIT_TAG 26a3b9f1c99a50928a29f3c336e7fdb2d7e4bda3)
     function(add_gentl_producer_core)
         set(BUILD_TESTING OFF)
-        add_subdirectory("${GENTL_PRODUCER_CORE_SOURCE_DIR}"
-                         "${CMAKE_CURRENT_BINARY_DIR}/gentl_producer_core" EXCLUDE_FROM_ALL)
+        if(GENTL_PRODUCER_CORE_SOURCE_DIR)
+            add_subdirectory("${GENTL_PRODUCER_CORE_SOURCE_DIR}"
+                             "${CMAKE_CURRENT_BINARY_DIR}/gentl_producer_core" EXCLUDE_FROM_ALL)
+        else()
+            FetchContent_MakeAvailable(GenTLProducerCore)
+        endif()
     endfunction()
     add_gentl_producer_core()
-else()
-    find_package(GenTLProducerCore 0.2.5 CONFIG REQUIRED)
 endif()
 
 add_library(clprotocol-gentl MODULE

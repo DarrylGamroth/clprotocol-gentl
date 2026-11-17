@@ -16,17 +16,10 @@ fs::path resolve_library(const fs::path &library)
     if (library.has_parent_path())
         throw std::runtime_error("CLProtocol library must be an absolute path or registered filename");
 
-    const char *registered = std::getenv("GENICAM_CLPROTOCOL");
     std::map<fs::path, fs::path> matches;
-    if (registered) {
-        std::string dirs(registered);
-        for (char &c : dirs)
-            if (c == ';') c = ':';
-        for (auto root : split(dirs, ':')) {
-            if (root.empty()) continue;
-            const auto file = fs::path(root) / "Linux64_x64" / library;
-            if (fs::is_regular_file(file)) matches.emplace(fs::canonical(file), fs::absolute(file));
-        }
+    for (const auto &root : registration_roots()) {
+        const auto file = root / "Linux64_x64" / library;
+        if (fs::is_regular_file(file)) matches.emplace(fs::canonical(file), file);
     }
     if (matches.size() != 1)
         throw std::runtime_error("expected one registered CLProtocol library named " +
@@ -45,6 +38,37 @@ std::vector<std::string_view> split(std::string_view value, char separator)
         if (end == value.npos) return fields;
         value.remove_prefix(end + 1);
     }
+}
+
+std::vector<fs::path> registration_roots()
+{
+    std::vector<fs::path> roots;
+    if (const char *registered = std::getenv("GENICAM_CLPROTOCOL")) {
+        std::string paths(registered);
+        for (auto &c : paths)
+            if (c == ';') c = ':';
+        for (auto root : split(paths, ':'))
+            if (!root.empty()) roots.push_back(fs::absolute(fs::path(root)));
+    }
+    return roots;
+}
+
+std::map<fs::path, fs::path> registered_drivers()
+{
+    std::map<fs::path, fs::path> drivers;
+    for (const auto &root : registration_roots()) {
+        const auto directory = root / "Linux64_x64";
+        if (!fs::is_directory(directory)) continue;
+        for (const auto &entry : fs::directory_iterator(directory)) {
+            const auto name = entry.path().filename().string();
+            if (!name.starts_with("lib") || !name.ends_with(".so") ||
+                name.starts_with("libCLAllSerial") || !entry.is_regular_file()) continue;
+            if (name.ends_with(".debug.so") &&
+                fs::is_regular_file(directory / (name.substr(0, name.size() - 9) + ".so"))) continue;
+            drivers.emplace(fs::canonical(entry.path()), entry.path());
+        }
+    }
+    return drivers;
 }
 
 bool matches_template(std::string_view id, std::string_view device_template)

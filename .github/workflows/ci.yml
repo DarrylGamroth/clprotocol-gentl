@@ -104,7 +104,6 @@ jobs:
             -DGENTL_PRODUCER_CORE_SOURCE_DIR="$GITHUB_WORKSPACE/dependencies/gentl-producer-core" \
             -DGenTLHeaders_ROOT="$RUNNER_TEMP/iris-mock/_deps/emva/gentl-1.6" \
             -DGenTLProducerCore_FETCH_GENTL_HEADERS=OFF \
-            -DCLPROTOCOL_INCLUDE_DIR="$GITHUB_WORKSPACE/dependencies/primary_fixture/include/genicam_include" \
             -Dprimary_fixture_PROVIDER="$RUNNER_TEMP/primary_fixture/libCLProtocol_primary_fixture.so" \
             -DIRIS_GENTL=/usr/bin/iris-gentl
           cmake --build "$RUNNER_TEMP/control" --parallel

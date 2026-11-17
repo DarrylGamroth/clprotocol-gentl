@@ -230,9 +230,8 @@ void refresh_devices(bool8_t *changed, uint64_t timeout)
         std::min<uint64_t>(timeout, std::numeric_limits<uint32_t>::max()));
     std::vector<CameraInfo> found;
     const auto count = producer.libraries->port_count();
-    for (const auto &assignment : producer.libraries->ports()) {
-        const auto channel = assignment.first;
-        if (channel >= count) continue;
+    for (uint32_t channel = 0; channel < count; ++channel) {
+        if (!producer.libraries->port_config(channel)) continue;
         auto opened = producer.open.find(channel);
         if (opened != producer.open.end()) {
             found.push_back(opened->second->identity);
@@ -347,8 +346,6 @@ GC_API GCInitLib()
         require(!producer.libraries, GC_ERR_RESOURCE_IN_USE, "CTI already initialized");
         const auto *serial = std::getenv("CLPROTOCOL_GENTL_SERIAL");
         const auto *config = std::getenv("CLPROTOCOL_GENTL_CONFIG");
-        require(serial && *serial && config && *config, GC_ERR_INVALID_PARAMETER,
-                "set CLPROTOCOL_GENTL_SERIAL and CLPROTOCOL_GENTL_CONFIG");
         producer.libraries = std::make_unique<Libraries>(serial, config);
     });
 }
@@ -522,7 +519,7 @@ GC_API IFOpenDevice(IF_HANDLE handle, const char *id, DEVICE_ACCESS_FLAGS mode, 
         require(!producer.open.count(camera.channel), GC_ERR_RESOURCE_IN_USE, "serial channel already open");
         auto connection = producer.libraries->connect(camera.channel, control_timeout_ms, &camera);
         require(connection->identity() == camera, GC_ERR_INVALID_ID, "camera identity changed since discovery");
-        const auto &config = producer.libraries->ports().at(camera.channel);
+        const auto &config = *producer.libraries->port_config(camera.channel);
         auto xml = std::make_unique<XmlFiles>(*connection, config);
         auto port = make_port(camera, *connection, config, *xml, mode != DEVICE_ACCESS_READONLY);
         auto opened = std::make_unique<Device>(Device{camera, std::move(connection), std::move(xml),

@@ -18,6 +18,8 @@ struct PortConfig {
     bool little_endian;
 };
 
+std::vector<std::filesystem::path> registration_roots();
+std::map<std::filesystem::path, std::filesystem::path> registered_drivers();
 std::map<std::uint32_t, PortConfig> read_config(const std::filesystem::path &file);
 std::vector<std::string_view> split(std::string_view value, char separator);
 bool matches_template(std::string_view id, std::string_view device_template);

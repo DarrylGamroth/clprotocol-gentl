@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "protocol.hpp"
 
+#include <gentl_producer_core/port_model.hpp>
 #include <dlfcn.h>
 
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <thread>
 
 namespace clprotocol {
@@ -23,10 +25,10 @@ public:
         if (!library_) throw std::runtime_error(dlerror());
     }
 
-    template<class T> T symbol(const char *name) const {
+    template<class T> T symbol(const char *name, bool required = true) const {
         dlerror();
         auto function = reinterpret_cast<T>(dlsym(library_.get(), name));
-        if (const char *error = dlerror()) throw std::runtime_error(error);
+        if (const char *error = dlerror(); error && required) throw std::runtime_error(error);
         return function;
     }
 
@@ -50,13 +52,16 @@ std::string checked_string(const char *data, std::size_t size)
 
 class SerialLibrary {
 public:
-    explicit SerialLibrary(const char *path) : library_(path) {}
+    explicit SerialLibrary(const char *path) : library_(path) {
+        if (!count_ports) count_ports = library_.symbol<CountPorts>("clGetNumSerialPorts");
+    }
 
 private:
     Library library_;
 public:
 #define LOAD(name) decltype(&::name) name = library_.symbol<decltype(&::name)>(#name)
-    LOAD(clGetNumSerialPorts);
+    using CountPorts = decltype(&::clGetNumPorts);
+    CountPorts count_ports = library_.symbol<CountPorts>("clGetNumPorts", false);
     LOAD(clSerialInit);
     LOAD(clSerialClose);
     LOAD(clSerialRead);
@@ -136,7 +141,7 @@ private:
 
 class ProtocolLibrary {
 public:
-    explicit ProtocolLibrary(const char *path) : library_(path) {
+    explicit ProtocolLibrary(Library library) : library_(std::move(library)) {
         const auto status = clpInitLib(nullptr, CLP_LOG_WARN);
         check(status, 0, "clpInitLib");
         try {
@@ -157,7 +162,7 @@ public:
         }
     }
 
-    bool advertises(const std::string &selected) {
+    std::vector<std::string> templates() {
         CLUINT32 size = 0;
         auto status = clpGetShortDeviceIDTemplates(nullptr, &size);
         if (status != CL_ERR_BUFFER_TOO_SMALL)
@@ -166,11 +171,17 @@ public:
         std::vector<char> data(size);
         check(clpGetShortDeviceIDTemplates(data.data(), &size), 0, "clpGetShortDeviceIDTemplates");
         const auto text = checked_string(data.data(), std::min<std::size_t>(size, data.size()));
-        for (auto advertised : split(text, '\t')) {
-            if (!advertised.empty() && (matches_template(selected, advertised) ||
-                                         matches_template(advertised, selected))) return true;
-        }
-        return false;
+        std::vector<std::string> result;
+        for (auto advertised : split(text, '\t'))
+            if (!advertised.empty()) result.emplace_back(advertised);
+        return result;
+    }
+
+    bool advertises(const std::string &selected) {
+        const auto advertised = templates();
+        return std::any_of(advertised.begin(), advertised.end(), [&](const auto &entry) {
+            return matches_template(selected, entry) || matches_template(entry, selected);
+        });
     }
 
     void check(CLINT32 status, CLUINT32 cookie, const char *operation) {
@@ -213,17 +224,65 @@ public:
 ProtocolError::ProtocolError(CLINT32 code, const std::string &message)
     : std::runtime_error(message), status(code) {}
 
-Libraries::Libraries(const char *serial_path, const char *config_path)
-    : serial_(std::make_unique<SerialLibrary>(serial_path)), ports_(read_config(config_path))
+namespace {
+
+std::unique_ptr<SerialLibrary> open_serial_library(const char *override_path)
 {
-    for (const auto &entry : ports_) {
-        const auto &port = entry.second;
-        auto &protocol = protocols_[port.module];
-        if (!protocol) protocol = std::make_unique<ProtocolLibrary>(port.library.c_str());
-        if (!protocol->advertises(port.device_template))
-            throw std::runtime_error(port.library.string() + " does not advertise template " +
-                                     port.device_template);
+    if (override_path && *override_path) return std::make_unique<SerialLibrary>(override_path);
+
+    constexpr char filename[] = "libCLAllSerial_gcc8_v3_5.so";
+    for (const auto &root : registration_roots()) {
+        const auto path = root / "Linux64_x64" / filename;
+        if (std::filesystem::is_regular_file(path)) return std::make_unique<SerialLibrary>(path.c_str());
     }
+    const auto adjacent = gentl_producer_core::cti_runtime_directory() / filename;
+    if (std::filesystem::is_regular_file(adjacent)) return std::make_unique<SerialLibrary>(adjacent.c_str());
+    return std::make_unique<SerialLibrary>(filename);
+}
+
+} // namespace
+
+Libraries::Libraries(const char *serial_path, const char *config_path)
+    : serial_(open_serial_library(serial_path))
+{
+    if (config_path && *config_path) {
+        ports_ = read_config(config_path);
+        for (const auto &entry : ports_) {
+            const auto &port = entry.second;
+            auto &protocol = protocols_[port.module];
+            if (!protocol) protocol = std::make_unique<ProtocolLibrary>(Library(port.library.c_str()));
+            if (!protocol->advertises(port.device_template))
+                throw std::runtime_error(port.library.string() + " does not advertise template " +
+                                         port.device_template);
+        }
+        return;
+    }
+
+    const char *selection = std::getenv("CLPROTOCOL_GENTL_DEVICE_TEMPLATE");
+    for (const auto &[module, path] : registered_drivers()) {
+        Library library(path.c_str());
+        using GetTemplates = decltype(&::clpGetShortDeviceIDTemplates);
+        if (!library.symbol<GetTemplates>("clpGetShortDeviceIDTemplates", false)) continue;
+        auto protocol = std::make_unique<ProtocolLibrary>(std::move(library));
+        for (const auto &device_template : protocol->templates()) {
+            if (selection && *selection && device_template != selection) continue;
+            if (registered_driver_)
+                throw std::runtime_error("multiple CLProtocol device templates match GENICAM_CLPROTOCOL; "
+                                         "select an advertised CLPROTOCOL_GENTL_DEVICE_TEMPLATE");
+            registered_driver_ = PortConfig{path, module, device_template, "Device", true};
+        }
+        if (registered_driver_ && registered_driver_->module == module)
+            protocols_.emplace(module, std::move(protocol));
+    }
+    if (!registered_driver_)
+        throw std::runtime_error("no matching CLProtocol device template in GENICAM_CLPROTOCOL");
+}
+
+const PortConfig *Libraries::port_config(std::uint32_t channel) const
+{
+    if (registered_driver_) return &*registered_driver_;
+    const auto found = ports_.find(channel);
+    return found == ports_.end() ? nullptr : &found->second;
 }
 
 Libraries::~Libraries() = default;
@@ -231,16 +290,17 @@ Libraries::~Libraries() = default;
 std::uint32_t Libraries::port_count()
 {
     CLUINT32 count = 0;
-    check_serial(serial_->clGetNumSerialPorts(&count), "clGetNumSerialPorts");
+    check_serial(serial_->count_ports(&count), "enumerate Camera Link serial ports");
     return count;
 }
 
 std::unique_ptr<CameraConnection> Libraries::connect(std::uint32_t channel, std::uint32_t timeout,
                                                       const CameraInfo *known)
 {
-    const auto &port = ports_.at(channel);
-    return std::make_unique<CameraConnection>(*serial_, *protocols_.at(port.module),
-                                               channel, port, known, timeout);
+    const auto *port = port_config(channel);
+    if (!port) throw std::out_of_range("no CLProtocol device template for the serial port");
+    return std::make_unique<CameraConnection>(*serial_, *protocols_.at(port->module),
+                                               channel, *port, known, timeout);
 }
 
 namespace {

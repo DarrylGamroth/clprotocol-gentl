@@ -4,11 +4,12 @@
 #include "config.hpp"
 
 #include <CLProtocol/CLProtocol.h>
-#include <CLProtocol/ClSerial.h>
+#include <CLProtocol/ClAllSerial.h>
 #include <CLProtocol/ISerial.h>
 
 #include <cstddef>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 
 namespace clprotocol {
@@ -61,13 +62,14 @@ public:
     Libraries(const char *serial_path, const char *config_path);
     ~Libraries();
     std::uint32_t port_count();
-    const std::map<std::uint32_t, PortConfig> &ports() const { return ports_; }
+    const PortConfig *port_config(std::uint32_t channel) const;
     std::unique_ptr<CameraConnection> connect(std::uint32_t channel, std::uint32_t timeout,
                                                const CameraInfo *known = nullptr);
 
 private:
     std::unique_ptr<SerialLibrary> serial_;
     std::map<std::uint32_t, PortConfig> ports_;
+    std::optional<PortConfig> registered_driver_;
     std::map<std::filesystem::path, std::unique_ptr<ProtocolLibrary>> protocols_;
 };
 

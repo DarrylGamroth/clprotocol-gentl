@@ -61,6 +61,16 @@ CLINT32 CLSERIALCC clGetNumSerialPorts(CLUINT32 *count)
     return CL_ERR_NO_ERR;
 }
 
+// CLAllSerial uses clGetNumPorts for the aggregated port list.
+extern "C" CLINT32 CLSERIALCC clGetNumPorts(CLUINT32 *count)
+{
+    if (std::getenv("CLP_MOCK_SINGLE_PORT")) {
+        *count = 1;
+        return CL_ERR_NO_ERR;
+    }
+    return clGetNumSerialPorts(count);
+}
+
 CLINT32 CLSERIALCC clSerialInit(CLUINT32 index, hSerRef *ref)
 {
     if (index >= cameras.size()) return CL_ERR_INVALID_INDEX;

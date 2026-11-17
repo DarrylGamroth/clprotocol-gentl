@@ -79,3 +79,25 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
     assert len(found) == 1 and found[0]["device"] == "CLSerial-1", found
     verify_camera(env | {"CLP_MOCK_XML_FILE_ONLY": "1"}, 1, "ALT-TEST-001", "CameraPort")
     print("Resolved the second library through a registration symlink and loaded its installed XML")
+
+    auto_root = Path(tmp) / "automatic"
+    auto_platform = auto_root / "Linux64_x64"
+    auto_platform.mkdir(parents=True)
+    protocol = Path(lines[0].split("\t")[1])
+    (auto_platform / protocol.name).symlink_to(protocol)
+    (auto_platform / "libCLAllSerial_gcc8_v3_5.so").symlink_to(Path(mock_serial).resolve())
+    automatic = env | {"GENICAM_CLPROTOCOL": str(auto_root), "CLP_MOCK_SINGLE_PORT": "1"}
+    for name in ("CLPROTOCOL_GENTL_CONFIG", "CLPROTOCOL_GENTL_SERIAL",
+                 "CLPROTOCOL_GENTL_DEVICE_TEMPLATE"):
+        automatic.pop(name, None)
+    found = json_lines(run(automatic, "info", "--json"))
+    assert len(found) == 1 and found[0]["serial"] == "primary_fixture-TEST-001", found
+    verify_camera(automatic, 0, "primary_fixture-TEST-001", "Device")
+
+    # Installed drivers for different cameras require a selection before probing.
+    automatic["GENICAM_CLPROTOCOL"] += ";" + str(registration)
+    run(automatic, "info", "--json", expect=1)
+    automatic["CLPROTOCOL_GENTL_DEVICE_TEMPLATE"] = "FixtureVendor#primary_fixture#primary_fixture"
+    selected = json_lines(run(automatic, "info", "--json"))
+    assert selected == found, selected
+    print("Discovered through GENICAM_CLPROTOCOL and CLAllSerial without a TSV or serial override")
