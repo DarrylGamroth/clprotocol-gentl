@@ -1,9 +1,40 @@
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "CLProtocol GenTL currently requires Linux")
+endif()
+
+# Match the Linux directories and SDK archive names in EMVA GenICam 3.5.1.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" clprotocol_processor)
+set(clprotocol_sdk_compiler gcc8)
+if(clprotocol_processor MATCHES "^(x86_64|amd64|x86|i[3-6]86)$")
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(CLPROTOCOL_PLATFORM Linux64_x64)
+    else()
+        set(CLPROTOCOL_PLATFORM Linux32_i86)
+        set(clprotocol_sdk_compiler "")
+    endif()
+elseif(clprotocol_processor MATCHES "^(aarch64|arm64)$" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(CLPROTOCOL_PLATFORM Linux64_ARM)
+elseif(clprotocol_processor MATCHES "^arm(v[5-8].*|hf)?$" AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles("
+        #ifndef __ARM_PCS_VFP
+        #error CLProtocol provides an ARM hard-float SDK
+        #endif
+        int main() {}" CLPROTOCOL_ARM_HARDFLOAT)
+    if(CLPROTOCOL_ARM_HARDFLOAT)
+        set(CLPROTOCOL_PLATFORM Linux32_ARMhf)
+    endif()
+endif()
+if(NOT CLPROTOCOL_PLATFORM)
+    message(FATAL_ERROR "No EMVA CLProtocol SDK layout for ${CMAKE_SYSTEM_PROCESSOR} with ${CMAKE_SIZEOF_VOID_P}-byte pointers")
+endif()
+
 find_path(CLPROTOCOL_INCLUDE_DIR CLProtocol/CLProtocol.h)
 if(NOT CLPROTOCOL_INCLUDE_DIR)
     set(emva_dir "${CMAKE_CURRENT_BINARY_DIR}/_deps/emva")
     set(archive "${emva_dir}/GenICam_V3_5_1_public_data.zip")
-    set(sdk "Linux64_x64/GenICam-CLProtocol-3.5.1-Linux64_x64_gcc8-SDK.tar.gz")
-    set(clprotocol_sdk "${emva_dir}/clprotocol-3.5.1")
+    set(sdk "${CLPROTOCOL_PLATFORM}/GenICam-CLProtocol-3.5.1-${CLPROTOCOL_PLATFORM}_${clprotocol_sdk_compiler}-SDK.tar.gz")
+    set(clprotocol_sdk "${emva_dir}/clprotocol-3.5.1/${CLPROTOCOL_PLATFORM}")
     set(CLPROTOCOL_INCLUDE_DIR "${clprotocol_sdk}/library/CPP/include")
     if(NOT EXISTS "${CLPROTOCOL_INCLUDE_DIR}/CLProtocol/ClAllSerial.h")
         file(MAKE_DIRECTORY "${emva_dir}" "${clprotocol_sdk}")

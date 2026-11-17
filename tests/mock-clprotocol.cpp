@@ -13,7 +13,7 @@
 
 namespace {
 constexpr char device_template[] = "FixtureVendor#Family#NoSerial";
-constexpr char full_id[] = "/fixture/Linux64_x64#libmock-clprotocol.so#FixtureVendor#Family#NoSerial";
+constexpr char full_id[] = "/fixture/" CLPROTOCOL_PLATFORM "#libmock-clprotocol.so#FixtureVendor#Family#NoSerial";
 constexpr char first_xml[] = "SchemaVersion.1.1@FixtureVendor#Family#NoSerial@XMLVersion.2.0.0";
 constexpr char installed_xml[] = "SchemaVersion.1.1@FixtureVendor#Family#NoSerial@XMLVersion.1.0.0";
 constexpr CLINT64 base = 0x20000000100;

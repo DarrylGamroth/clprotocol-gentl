@@ -82,7 +82,7 @@ std::map<std::string, InstalledXml> installed_xml(const PortConfig &port, const 
     std::vector<fs::path> locations;
     for (const auto &path : {port.library, port.module}) {
         const auto directory = path.parent_path();
-        const auto root = directory.filename() == "Linux64_x64" ? directory.parent_path() : directory;
+        const auto root = directory.filename() == platform_directory ? directory.parent_path() : directory;
         for (const auto &location : {root, directory})
             if (std::find(locations.begin(), locations.end(), location) == locations.end())
                 locations.push_back(location);

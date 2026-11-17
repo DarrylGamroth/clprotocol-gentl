@@ -11,6 +11,37 @@ permissions:
   contents: read
 
 jobs:
+  linux-platforms:
+    name: Linux ${{ matrix.architecture }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: AArch64
+            runner: ubuntu-24.04-arm
+          - architecture: x86 (32-bit)
+            runner: ubuntu-24.04
+            cxx-flags: -m32
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Install the 32-bit C++ toolchain
+        if: matrix.cxx-flags == '-m32'
+        run: sudo apt-get update && sudo apt-get install -y g++-multilib
+      - name: Build and test with the in-tree mocks
+        env:
+          CLPROTOCOL_TEST_CXX_FLAGS: ${{ matrix.cxx-flags }}
+        run: |
+          build="$RUNNER_TEMP/clprotocol-platform"
+          cmake -S . -B "$build" -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_FLAGS="$CLPROTOCOL_TEST_CXX_FLAGS" \
+            -DBUILD_TESTING=ON -DCLPROTOCOL_GENTL_TEST_IRIS=OFF
+          cmake --build "$build" --parallel
+          ctest --test-dir "$build" --output-on-failure --no-tests=error
+
   coverage:
     name: In-tree simulator coverage
     runs-on: ubuntu-24.04

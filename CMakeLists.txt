@@ -37,6 +37,7 @@ add_library(clprotocol-gentl MODULE
 set_target_properties(clprotocol-gentl PROPERTIES
     PREFIX "" SUFFIX ".cti" CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN YES)
 target_include_directories(clprotocol-gentl PRIVATE "${CLPROTOCOL_INCLUDE_DIR}")
+target_compile_definitions(clprotocol-gentl PRIVATE CLPROTOCOL_PLATFORM="${CLPROTOCOL_PLATFORM}")
 target_compile_options(clprotocol-gentl PRIVATE -Wall -Wextra -Wpedantic)
 if(CLPROTOCOL_GENTL_COVERAGE)
     target_compile_options(clprotocol-gentl PRIVATE --coverage -O0 -g)

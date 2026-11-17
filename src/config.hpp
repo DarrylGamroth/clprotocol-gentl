@@ -10,6 +10,8 @@
 
 namespace clprotocol {
 
+inline constexpr char platform_directory[] = CLPROTOCOL_PLATFORM;
+
 struct PortConfig {
     std::filesystem::path library;
     std::filesystem::path module;

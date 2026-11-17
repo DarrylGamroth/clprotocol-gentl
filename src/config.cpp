@@ -18,7 +18,7 @@ fs::path resolve_library(const fs::path &library)
 
     std::map<fs::path, fs::path> matches;
     for (const auto &root : registration_roots()) {
-        const auto file = root / "Linux64_x64" / library;
+        const auto file = root / platform_directory / library;
         if (fs::is_regular_file(file)) matches.emplace(fs::canonical(file), file);
     }
     if (matches.size() != 1)
@@ -57,7 +57,7 @@ std::map<fs::path, fs::path> registered_drivers()
 {
     std::map<fs::path, fs::path> drivers;
     for (const auto &root : registration_roots()) {
-        const auto directory = root / "Linux64_x64";
+        const auto directory = root / platform_directory;
         if (!fs::is_directory(directory)) continue;
         for (const auto &entry : fs::directory_iterator(directory)) {
             const auto name = entry.path().filename().string();

@@ -203,6 +203,20 @@ int main(int argc, char **argv)
                   == GC_ERR_INVALID_ADDRESS && size == 0);
         CHECK(DevClose(device) == GC_ERR_SUCCESS);
         CHECK(DevClose(device) == GC_ERR_INVALID_HANDLE);
+
+        if (std::strcmp(id, "CLSerial-1") == 0) {
+            CHECK(IFOpenDevice(interface, id, DEVICE_ACCESS_CONTROL, &device) == GC_ERR_SUCCESS);
+            CHECK(DevGetPort(device, &port) == GC_ERR_SUCCESS);
+            // The fixture exposes TriggerMode as a big-endian 32-bit register.
+            std::array<unsigned char, 4> trigger_mode{0, 0, 0, 1};
+            size = trigger_mode.size();
+            CHECK(GCWritePort(port, alt_address + 0x24, trigger_mode.data(), &size) == GC_ERR_SUCCESS);
+            decltype(trigger_mode) readback{};
+            size = readback.size();
+            CHECK(GCReadPort(port, alt_address + 0x24, readback.data(), &size) == GC_ERR_SUCCESS);
+            CHECK(size == readback.size() && readback == trigger_mode);
+            CHECK(DevClose(device) == GC_ERR_SUCCESS);
+        }
     }
     CHECK(IFClose(interface) == GC_ERR_SUCCESS);
     CHECK(TLClose(system) == GC_ERR_SUCCESS);

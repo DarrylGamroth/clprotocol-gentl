@@ -41,7 +41,7 @@ def verify_camera(env, channel, serial, port):
     print(f"{serial}: loaded XML via {port}, verified writes and readback, zero streams")
 
 
-iris, cti, mock_serial, mock_protocol, config = sys.argv[1:]
+iris, cti, mock_serial, mock_protocol, config, platform_directory = sys.argv[1:]
 env = os.environ.copy()
 for name in ("CLP_XML_PATH", "primary_fixture_SIM_HARDWARE_ID", "primary_fixture_SIM_NO_CAMERA",
              "CLP_MOCK_XML_FILE_ONLY", "CLP_MOCK_SINGLE_TEMPLATE", "CLP_MOCK_SINGLE_PORT",
@@ -62,7 +62,7 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
 
     driver = Path(mock_protocol)
     registration = Path(tmp) / "CLProtocol"
-    platform = registration / "Linux64_x64"
+    platform = registration / platform_directory
     platform.mkdir(parents=True)
     # Keep the driver target separate from its registration root and XML.
     (platform / driver.name).symlink_to(driver)
@@ -103,7 +103,7 @@ with TemporaryDirectory(prefix="clprotocol-gentl XML ") as tmp:
     # A reachable camera without XML can be discovered, but opening fails and
     # the producer removes the private directory it reserved for the XML.
     no_xml = Path(tmp) / "no-xml"
-    no_xml_platform = no_xml / "Linux64_x64"
+    no_xml_platform = no_xml / platform_directory
     no_xml_platform.mkdir(parents=True)
     shutil.copyfile(driver, no_xml_platform / driver.name)
     isolated = automatic | {"GENICAM_CLPROTOCOL": str(no_xml),

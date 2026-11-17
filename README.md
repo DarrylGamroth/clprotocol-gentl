@@ -3,10 +3,10 @@
 [![CI](https://github.com/DarrylGamroth/clprotocol-gentl/actions/workflows/ci.yml/badge.svg)](https://github.com/DarrylGamroth/clprotocol-gentl/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/DarrylGamroth/clprotocol-gentl/graph/badge.svg)](https://codecov.io/gh/DarrylGamroth/clprotocol-gentl)
 
-`clprotocol-gentl.cti` is a standalone GenTL producer for Camera Link camera
-control on Linux x86-64. It exposes remote GenApi XML and register I/O and
-reports zero data streams. Applications can acquire images through the frame
-grabber's capture CTI.
+`clprotocol-gentl.cti` exposes Camera Link camera control through GenTL.
+Applications use it to load the camera's GenApi XML and read or write
+registers. The producer reports zero data streams. For image acquisition, use
+the frame grabber's capture CTI.
 
 ## Build
 
@@ -16,22 +16,40 @@ cmake --build build
 cmake --install build --prefix /path/to/install
 ```
 
-CMake downloads the EMVA CLProtocol SDK headers and uses the GenTL 1.6 headers
-provided by GenTLProducerCore. It uses an installed GenTLProducerCore package
-when available and otherwise fetches a pinned revision from GitHub. To use a local checkout,
-set `GENTL_PRODUCER_CORE_SOURCE_DIR`. To supply local headers, set
+CMake downloads the EMVA CLProtocol SDK headers for the Linux target and uses
+GenTL 1.6 headers through GenTLProducerCore. It uses an installed Core package
+or fetches a pinned revision. To use a local Core checkout, set
+`GENTL_PRODUCER_CORE_SOURCE_DIR`. To use local headers, set
 `CLPROTOCOL_INCLUDE_DIR` and `GenTLHeaders_ROOT`.
 
-The CTI statically links GenTLProducerCore. The install target places it under
-`lib/gentl` by default.
+The install target places the CTI under `lib/gentl` by default.
+
+## Platforms
+
+The producer uses the CLProtocol SDK and the matching CLAllSerial runtime and
+camera driver. GenApi runs in the consumer. The producer's Linux loader and
+GenTLProducerCore determine which systems can build and load the CTI.
+
+GitHub CI exercises Linux x86-64, AArch64, and 32-bit x86. CMake also recognizes
+the EMVA layout for 32-bit ARM hard-float. Windows would require porting the CTI
+loader and Core. The EMVA GenApi SDK for macOS supports consumer applications.
 
 ## Discover cameras
 
-Install your camera's CLProtocol driver under `Linux64_x64` in a registration
-directory. Place any accompanying XML in the registration directory. Make the
-EMVA CLAllSerial runtime available to the dynamic loader or place it under the
-same `Linux64_x64` directory with the frame grabber's Camera Link serial
-module alongside it.
+Install the camera driver in your platform subdirectory of a CLProtocol
+registration directory.
+
+| Linux target | Platform subdirectory |
+| --- | --- |
+| x86-64 | `Linux64_x64` |
+| AArch64 | `Linux64_ARM` |
+| x86 (32-bit) | `Linux32_i86` |
+| ARM hard-float (32-bit) | `Linux32_ARMhf` |
+
+Place any accompanying XML in the registration directory. Make the EMVA
+CLAllSerial runtime available to the dynamic loader or place it in the same
+platform subdirectory. Install the frame grabber's Camera Link serial module
+alongside CLAllSerial.
 
 ```sh
 export GENICAM_CLPROTOCOL=/path/to/CLProtocol
@@ -66,7 +84,9 @@ the device closes.
 
 ## Simulator tests
 
-GitHub CI uses in-tree mocks to exercise environment-based discovery, XML
-loading, register I/O, and the zero-stream ABI, and uploads GCC coverage to
-Codecov. The paired Iris SPA tests stream mock frames while accessing camera features. See the
-[workflow](.github/workflows/ci.yml) for the test dependencies and commands.
+The in-tree mocks test environment-based discovery, XML loading, register I/O,
+and the zero-stream ABI. Configure with `-DBUILD_TESTING=ON` and set
+`-DCLPROTOCOL_GENTL_TEST_IRIS=OFF` to run the direct GenTL tests without
+`iris-gentl`. The x86-64 workflow requires above 90% line coverage and uploads
+the report to Codecov. The paired Iris SPA tests stream mock frames while
+accessing camera features. See the [workflow](.github/workflows/ci.yml).

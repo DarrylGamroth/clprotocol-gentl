@@ -232,7 +232,7 @@ std::unique_ptr<SerialLibrary> open_serial_library(const char *override_path)
 
     constexpr char filename[] = "libCLAllSerial_gcc8_v3_5.so";
     for (const auto &root : registration_roots()) {
-        const auto path = root / "Linux64_x64" / filename;
+        const auto path = root / platform_directory / filename;
         if (std::filesystem::is_regular_file(path)) return std::make_unique<SerialLibrary>(path.c_str());
     }
     const auto adjacent = gentl_producer_core::cti_runtime_directory() / filename;
