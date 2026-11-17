@@ -19,7 +19,7 @@ if(NOT TARGET GenTLProducerCore::gentl_producer_core)
     include(FetchContent)
     FetchContent_Declare(GenTLProducerCore
         GIT_REPOSITORY https://github.com/DarrylGamroth/GenTLProducerCore.git
-        GIT_TAG 0fb0868f8a9d50378ac54feb5379533577ff9db1)
+        GIT_TAG 7fb6c7662ddce2bd340cc7f7ec60f491b2e3f54d)
     function(add_gentl_producer_core)
         set(BUILD_TESTING OFF)
         if(GENTL_PRODUCER_CORE_SOURCE_DIR)
